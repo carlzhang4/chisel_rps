@@ -13,6 +13,7 @@ object elaborate extends App {
 
 	args(0) match{
 		case "QDMATop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new QDMATop()),dir))
+		case "Test" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new Test()),dir))
 		case _ => println("Module match failed!")
 	}
 }
