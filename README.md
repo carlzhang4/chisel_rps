@@ -23,19 +23,19 @@ First, create a vivado project, vivado version must either of 2020.01/2020.02/20
 Modify two lines in ./qdma/src/QDMATop.scala, replace with your vivado version and your vivado project's IP location
 
 $ mill project_foo QDMATop
-This will generate a QDMATop.sv under Verilog, copy and add it to your vivado project. 
+This will generate a QDMATop.sv under Verilog folder, copy and add it to your vivado project. 
 
-And it will also generate several tcl commands, starts with create_ip xxxx, ends with update_compile_order -fileset sources_1.
+And it will also print several tcl commands, starts with create_ip xxxx, ends with update_compile_order -fileset sources_1.
 
-Copy these tcls and execute them in your vivado project's tcl console, this will help you generate a QDMA IP.
+Copy these tcls and execute them in your vivado project's tcl console, this will help you to generate a QDMA IP.
 
-Copy xdc file (./qdma/src/sv) to your vivado project and add it as constraint.
+Copy xdc file (./qdma/sv) to your vivado project and add it as constraint.
 
 Then you can generate your bitstream.
 
 Corresponding benchmark software and corresponding driver could be found in https://github.com/carlzhang4/qdma_improve
 
-You can also write your own top file by referring ./qdma/src/QDMATop.scala.
+You can also write your own top file by refering ./qdma/src/QDMATop.scala.
 ```
 
 # How to simplify your workflow with several scripts
