@@ -7,7 +7,7 @@ class Package extends Bundle{
 	val last = UInt(1.W)
 }
 
-class Test extends Module{
+class Foo extends Module{
 	val io = IO(new Bundle{
 		val in	= Flipped(Decoupled(new Package))
 		val out = Decoupled(new Package)
