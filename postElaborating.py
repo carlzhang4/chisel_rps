@@ -132,11 +132,13 @@ def parse_width():
 			signals = moniter.signals
 			for i in range(len(signals)):
 				wireName = instName+"_data_%d;"%i # must have semicolon, or data_1 would be duplicated by data_11
-				if line.find(wireName)!=-1 and line.find("wire")!=-1:
+				words = line.split()
+				if len(words)>=2 and words[0]=="wire" and (words[1]==wireName or words[2]==wireName):
 					width = get_width(line)
 					moniter.widths.insert(0,width)
-	for miniter in moniters:
+	for moniter in moniters:
 		if(len(moniter.signals) != len(moniter.widths)):
+			print(moniter.name)
 			print(moniter.signals)
 			print(moniter.widths)
 		assert(len(moniter.signals) == len(moniter.widths)) # maybe a port is zero and has been optimized!
