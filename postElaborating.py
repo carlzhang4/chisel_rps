@@ -3,12 +3,13 @@ import os
 import subprocess
 import getopt
 import json
-
+import re
 
 class Moniter():
-	def __init__(self,name):
+	def __init__(self, name):
 		self.name = name
-		self.signals = []
+		self.buses = []
+		self.instName = None
 		self.widths = []
 		if name.startswith("ila"):
 			self.type = "ila"
@@ -18,19 +19,32 @@ class Moniter():
 			print("Error ipType")
 			sys.exit(0)
 
+class Bus():
+	def __init__(self, name):
+		self.name = name
+		self.signals = []
+
+class Signal():
+	def __init__(self, name, width):
+		self.name = name
+		self.width = width
 		
 configFileName = "config.json"
 configFile = open(configFileName)
 config = json.load(configFile)
 configFile.close()
 
-moniterDepth = 1024
-moniterDelay=0
-
 projectName = str(sys.argv[1])
 moduleName = str(sys.argv[2])
 showTCL = False
 postRun = False
+
+if not projectName in config:
+	print("Project not in config file!")
+	sys.exit(0)
+
+moniterDepth = config[projectName]["moniterDepth"] if "moniterDepth" in config[projectName] else 1024
+moniterDelay = config[projectName]["moniterDelay"] if "moniterDelay" in config[projectName] else 0
 
 argv = sys.argv[3:]
 
@@ -87,22 +101,23 @@ def initial_moniters_from_txt():
 	except IOError:
 		return
 	lines = f.readlines()
-	signals = [] 
+	signal_buses = [] 
 	for l in lines:
 		line = l.replace("\n","")
 		
 		if line.endswith(":"):
 			moniterName = line[:-1]
 			m = Moniter(moniterName)
-			m.signals = signals[:]
+			for bus in signal_buses:
+				m.buses.append(Bus(bus))
 			moniters.append(m)
-			for signal in signals:
-				if signal.count(signal) != 1:
-					print("signal name conflict!")
+			for bus in signal_buses:
+				if signal_buses.count(bus) != 1:
+					print(f"Bus/Signal name conflict! Duplicated buses/signals named {bus} in {moniterName} detected!")
 					sys.exit(0)
-			signals = []
+			signal_buses = []
 		else:
-			signals.append(line)
+			signal_buses.append(line)
 	f.close()
 
 def parse_verilog():
@@ -110,85 +125,112 @@ def parse_verilog():
 	f = open(fileName,'r')
 	lines = f.readlines()
 	for line in lines:
+		# Skip all lines not starting with "ila_" or "vio_"
+		if not line.strip().startswith("ila_") and not line.strip().startswith("vio_"):
+			continue
 		for moniter in moniters:
-			if line.find(moniter.name+" ") != -1: #  ila_control_reg mod1 ( // @[QDMATop.scala 74:26]
-				l = line.split(' ')
-				instName = list(filter(None,l))[1]
-				moniter.instName = instName
+			# Find lines such as below: 
+			# ila_control_reg mod1 ( // @[QDMATop.scala 74:26]
+			matchObj = re.match(rf"\s+{moniter.name} (\S+) \( // @\[.+\]", line)
+			if matchObj != None:
+				moniter.instName = matchObj.group(1)
 	instNames = [moniter.instName for moniter in moniters]
 	for instName in instNames:
 		if instNames.count(instName) != 1:
-			print("instant name conflict!")
+			print(f"Instant name conflict! Duplicated instants named {instName} detected!")
 			sys.exit(0)
 	f.close()
 
 def parse_width():
+	# Pick and parse all signals within an moniter.
 	fileName = "Verilog/" + moduleName + ".sv"
 	f = open(fileName,'r')
 	lines = f.readlines()
 	for line in lines:
+		# Skip all lines not starting with "wire".
+		if not line.strip().startswith("wire"):
+			continue
 		for moniter in moniters:
 			instName = moniter.instName
-			signals = moniter.signals
-			for i in range(len(signals)):
-				wireName = instName+"_data_%d;"%i # must have semicolon, or data_1 would be duplicated by data_11
-				words = line.split()
-				if len(words)>=2 and words[0]=="wire" and (words[1]==wireName or words[2]==wireName):
-					width = get_width(line)
-					moniter.widths.insert(0,width)
-	for moniter in moniters:
-		if(len(moniter.signals) != len(moniter.widths)):
-			print(moniter.name)
-			print(moniter.signals)
-			print(moniter.widths)
-		assert(len(moniter.signals) == len(moniter.widths)) # maybe a port is zero and has been optimized!
+			buses = moniter.buses
+			# Parse the wire name and see if match target pattern.
+			matchObj = re.match(rf"\s+wire (|\[([0-9]+):0\]) {instName}_data_([0-9]+)(\S*);", line)
+			if matchObj != None:
+				# Signal found.
+				width = matchObj.group(2)
+				busId = matchObj.group(3)
+				signalName = matchObj.group(4)
+				if (width != None and not width.isdigit()):
+					break
+				if (not busId.isdigit() or int(busId) >= len(buses)):
+					break
+				busId = int(busId)
+				if (width == None):
+					width = 1
+				else:
+					width = int(width) + 1
+				moniter.buses[busId].signals.append(Signal(signalName, width))
 
 def generate_wrapper(moniter):
-	widths = moniter.widths
-	signals = moniter.signals
 	ip_name = moniter.name
-	names = ["data_%d"%i for i in range(len(widths))]
-	io = "input" if moniter.type=="ila"  else "output"
-
-	wrapper = "module %s(\n"%(ip_name)
+	wrapper = f"module {ip_name}(\n"
 	wrapper += "input clk,\n"
-
-	for i in range(len(names)):
-		name = names[i]
-		width = widths[i]
-		if i != len(names)-1:
+	signal_names = []
+	signal_widths = []
+	target_names = []
+	# Sort signals in each bus to make easier to read.
+	for bus in moniter.buses:
+		sorted(bus.signals, key=lambda x: x.name)
+	for busIdx, bus in enumerate(moniter.buses):
+		for signal in bus.signals:
+			signal_name = f"data_{busIdx}{signal.name}"
+			if signal_name in signal_names:
+				print(f"Pin name conflict! Duplicated pins named {signal_name} in {ip_name} detected!")
+				sys.exit(0)
+			signal_names.append(signal_name)
+			signal_widths.append(signal.width)
+			target_name = f"{bus.name}{signal.name}"
+			if target_name in target_names:
+				print(f"Signal name conflict! Duplicated signals named {target_name} in {ip_name} detected!")
+				sys.exit(0)
+			target_names.append(target_name)
+	io = "input" if moniter.type=="ila"  else "output"
+	probe_cnt = len(signal_names)
+	for i in range(probe_cnt):
+		name = signal_names[i]
+		width = signal_widths[i]
+		if i != probe_cnt - 1:
 			wrapper += "%s [%d:0] %s,\n"%(io,width-1,name)
 		else:
 			wrapper += "%s [%d:0] %s);\n"%(io,width-1,name)
-	
 	converts = ""
 	if moniter.type=="ila":
-		for i in range(len(signals)):
-			converts += "wire [%d:0] %s = %s;\n"%(widths[i]-1, signals[i], names[i])
+		for i in range(probe_cnt):
+			converts += f"wire [{signal_widths[i]-1}:0] {target_names[i]} = {signal_names[i]};\n"
 	else:
-		for i in range(len(signals)):
-			converts += "(* keep = \"true\" *)wire [%d:0] %s;\n"%(widths[i]-1, signals[i])
-			converts += "assign %s = %s;\n"%(names[i], signals[i])
-	instance = "%s_inner inst_%s(\n.clk(clk),\n"%(ip_name,ip_name)
+		for i in range(probe_cnt):
+			converts += f"(* keep = \"true\" *)wire [{signal_widths[i]-1}:0] {target_names[i]};\n"
+			converts += f"assign {target_names[i]} = {signal_names[i]};\n"
+	instance = f"{ip_name}_inner inst_{ip_name}(\n.clk(clk),\n"
 
-	for i in range(len(names)):
-		name = signals[i]
-		width = widths[i]
+	for i in range(probe_cnt):
+		name = target_names[i]
+		width = signal_widths[i]
 		if moniter.type=="ila":
-			if i != len(names)-1:
-				instance += ".probe%d(%s), //[%s:0]\n"%(i,name,width)
+			if i != probe_cnt-1:
+				instance += f".probe{i}({name}), //[{width-1}:0]\n"
 			else:
-				instance += ".probe%d(%s)); //[%s:0]\n"%(i,name,width)
+				instance += f".probe{i}({name})); //[{width-1}:0]\n"
 		else:
-			if i != len(names)-1:
-				instance += ".probe_out%d(%s), //[%s:0]\n"%(i,name,width)
+			if i != probe_cnt-1:
+				instance += f".probe_out{i}({name}), //[{width-1}:0]\n"
 			else:
-				instance += ".probe_out%d(%s)); //[%s:0]\n"%(i,name,width)
+				instance += f".probe_out{i}({name})); //[{width-1}:0]\n"
+	moniter.widths = signal_widths
 	return wrapper + "\n" + converts + "\n" + instance + "endmodule\n"
 
 def generate_tcl(moniter):
 	widths = moniter.widths
-	signales = moniter.signals
 	tcl = ""
 	if moniter.type == "ila":
 		ip_name = moniter.name+"_inner"
