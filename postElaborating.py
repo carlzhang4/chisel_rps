@@ -78,6 +78,9 @@ def append_wrapper_to_sv(wrapper):
 	f.write(wrapper)
 	f.close()
 
+# you must first add below code to your testbench before any print, and make sure fd == h80000003
+# fd = $fopen("~/output", "w");
+# $display("fd = %x\n",fd);
 def replace_print():
 	fileName = "Verilog/" + moduleName + ".sv"
 	f = open(fileName,'r')
