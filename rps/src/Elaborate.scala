@@ -1,4 +1,5 @@
-package project_foo
+package rps
+
 import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselGeneratorAnnotation, ChiselStage}
@@ -12,8 +13,7 @@ object elaborate extends App {
 	val dir 	= TargetDirAnnotation("Verilog")
 
 	args(0) match{
-		case "QDMATop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new QDMATop()),dir))
-		case "Foo" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new Foo()),dir))
+		case "RPSTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSTop()),dir))
 		case _ => println("Module match failed!")
 	}
 }
