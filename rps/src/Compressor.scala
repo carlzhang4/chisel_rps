@@ -1,0 +1,273 @@
+package rps
+
+import chisel3._
+import chisel3.util._
+import common._
+import common.storage.XQueue
+import common.axi._
+import common.connection.SimpleRouter
+import common.connection.SerialRouter
+import common.connection.SerialArbiter
+import common.connection.XArbiter
+
+class CompressorHBM() extends Module{
+	def NUM_CHANNELS = 4
+	def TODO_32 = 32
+	val io = IO(new Bundle{
+		val hbm_ar	= Vec(NUM_CHANNELS, Decoupled(AXI_HBM_ADDR()))
+		val hbm_r	= Vec(NUM_CHANNELS, Flipped(Decoupled(AXI_HBM_R()))) 
+		val cmd_in	= Flipped(Decoupled(new Meta2Compressor))
+		val out 	= Decoupled(new CompressData)
+	})
+	val readers 	= Seq.fill(NUM_CHANNELS)(Module(new ChannelReader))
+
+	val router		= {
+		val router = SimpleRouter(new Meta2Compressor, NUM_CHANNELS)
+		router.io.in <> io.cmd_in
+		for(i <- 0 until NUM_CHANNELS){
+			router.io.out(i) <> readers(i).io.cmd_in
+		}
+		router.io.idx	:= io.cmd_in.bits.addr(32,28) //todo 256M
+		router
+	}
+
+	for(i<-0 until NUM_CHANNELS){
+		readers(i).io.ar	<> io.hbm_ar(i)
+		readers(i).io.r		<> io.hbm_r(i)
+	}
+
+	val arbiter		= {
+		val arbiter = SerialArbiter(new CompressData, NUM_CHANNELS)
+		for(i<-0 until NUM_CHANNELS){
+			arbiter.io.in(i)	<> readers(i).io.out
+			arbiter.io.last(i)	<> readers(i).io.out.bits.last
+		}
+		arbiter
+	}
+	arbiter.io.out	<> io.out
+}
+class ChannelReader() extends Module{
+	/*
+	* hbm port 256 bits = 32 byte
+	* ar max 16 beats = 512 bytes
+	* 4K data requires 8 ar beats and 128 r beats
+	* 4K data out is 512 bits width and has 64 beats
+	*/
+	def TODO_RAW_PACKET_SIZE 		= 4096 //byte
+	def TODO_RAW_PACKET_SIZE_BEATS 	= 64 //4096/64
+	def TODO_32 = 32
+	val io = IO(new Bundle{
+		val ar		= Decoupled(AXI_HBM_ADDR())
+		val r		= Flipped(Decoupled(AXI_HBM_R()))
+		val cmd_in	= Flipped(Decoupled(new Meta2Compressor))
+		val out 	= Decoupled(new CompressData)
+	})
+
+	io.ar.bits.hbm_init()
+
+	val ar_bytes	= ((io.ar.bits.len+&1.U) << 5)
+	val count_ar_bytes	= RegInit(UInt(32.W), 0.U)
+	val ar_addr			= RegInit(UInt(33.W), 0.U)
+	when(io.cmd_in.fire()){
+		ar_addr		:= io.cmd_in.bits.addr
+	}.elsewhen(io.ar.fire()){
+		ar_addr		:= ar_addr + ar_bytes
+	}
+
+	val sParseCmd :: sSendAr :: sWait :: Nil	= Enum(3)
+	val state_ar = RegInit(sParseCmd)
+	switch(state_ar){
+		is(sParseCmd){
+			when(io.cmd_in.fire()){
+				state_ar	:= sSendAr
+			}
+		}
+		is(sSendAr){
+			when(io.ar.fire() && count_ar_bytes+ar_bytes === TODO_RAW_PACKET_SIZE.U){
+				state_ar	:= sParseCmd
+			}
+		}
+	}
+	io.cmd_in.ready := state_ar === sParseCmd
+
+	io.ar.valid		:= state_ar === sSendAr
+	io.ar.bits.addr	:= ar_addr
+	io.ar.bits.len	:= 0xf.U
+
+	when(io.ar.fire()){
+		count_ar_bytes 		:= count_ar_bytes + ar_bytes
+		when(count_ar_bytes+ar_bytes === TODO_RAW_PACKET_SIZE.U){
+			count_ar_bytes	:= 0.U
+		}
+	}
+
+	//ar and data
+	val q_data		= XQueue(new CompressData, TODO_32)
+
+	val first_data = RegInit(UInt(256.W), 0.U)
+	val sFirst :: sSecond :: Nil = Enum(2)
+	val state_r = RegInit(sFirst)
+	switch(state_r){
+		is(sFirst){
+			when(io.r.fire()){
+				state_r		:= sSecond
+				first_data	:= io.r.bits.data
+			}
+		}
+		is(sSecond){
+			when(io.r.fire()){
+				state_r		:= sFirst
+			}
+		}
+	}
+	when(state_r === sFirst){
+		io.r.ready	:= 1.U
+	}.elsewhen(state_r === sSecond){
+		io.r.ready	:= q_data.io.in.ready
+	}.otherwise{
+		io.r.ready	:= 0.U //undefined state
+	}
+
+	val en_push						= q_data.io.in.fire()
+	val (count_push,wrap_push)		= Counter(en_push, TODO_RAW_PACKET_SIZE_BEATS)
+	// val count_push 	= RegInit(UInt(32.W),0.U)
+	
+	q_data.io.in.valid		:= state_r === sSecond && io.r.valid
+	q_data.io.in.bits.data	:= Cat(io.r.bits.data, first_data)
+	q_data.io.in.bits.last	:= wrap_push//count_push+64.U === TODO_RAW_PACKET_SIZE.U
+	
+	val compressBlock		= Module(new CompressBlock())
+	compressBlock.io.in	<> q_data.io.out
+	io.out	<> compressBlock.io.out
+}
+
+class CompressBlock() extends Module{
+	def NUM_UNITS = 4
+	val io = IO(new Bundle{
+		val in	= Flipped(Decoupled(new CompressData))
+		val out = Decoupled(new CompressData)
+	})
+
+	val compressUnits	= Seq.fill(NUM_UNITS)(Module(new CompressUnit()))
+	
+	val idx	= RegInit(UInt((log2Up(NUM_UNITS)).W), 0.U)
+	when(io.in.fire() && io.in.bits.last===1.U){
+		idx	:= idx + 1.U
+	}
+
+	val router	= SerialRouter(new CompressData, NUM_UNITS)
+	val arbiter =  SerialArbiter(new CompressData, NUM_UNITS)
+	router.io.in	<> io.in
+	router.io.idx	<> idx
+	router.io.last	<> io.in.bits.last
+	arbiter.io.out	<> io.out
+	for(i<-0 until NUM_UNITS){
+		router.io.out(i)	<> compressUnits(i).io.in
+		arbiter.io.in(i)	<> compressUnits(i).io.out
+		arbiter.io.last(i)	<> compressUnits(i).io.out.bits.last
+	}
+
+	// //todo 
+	// val c_in_valid		= Cat(compressUnits.map(_.io.in.valid))
+	// val c_in_ready		= Cat(compressUnits.map(_.io.in.ready))
+	// val c_out_valid		= Cat(compressUnits.map(_.io.out.valid))
+	// val c_out_ready		= Cat(compressUnits.map(_.io.out.ready))
+	// val arbiter_last	= Cat(compressUnits.map(_.io.out.bits.last))
+
+	// class ila_compress_block(seq:Seq[Data]) extends BaseILA(seq)
+	// val inst_ila_compress_block = Module(new ila_compress_block(Seq(	
+	// 	idx,
+	// 	router.io.in.valid,
+	// 	router.io.in.ready,
+	// 	router.io.last,
+
+	// 	router.io.out(0).valid,
+	// 	router.io.out(0).ready,
+
+	// 	router.io.out(1).valid,
+	// 	router.io.out(1).ready,
+
+	// 	router.io.out(2).valid,
+	// 	router.io.out(2).ready,
+
+	// 	router.io.out(3).valid,
+	// 	router.io.out(3).ready,
+
+	// 	c_in_valid,
+	// 	c_in_ready,
+	// 	c_out_valid,
+	// 	c_out_ready,
+
+	// 	arbiter_last,
+				
+	// )))
+	// inst_ila_compress_block.connect(clock)
+	
+}
+class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module {
+	/*
+		OutBeats (default 32): beats after compression, 32*512/8 = 2K
+	*/
+	val io = IO(new Bundle{
+		// val compress_cmd_in		= Flipped(Decoupled(new CompressDescriptor))
+		val in 					= Flipped(Decoupled(new CompressData))
+		val out					= Decoupled(new CompressData)
+	})
+
+	val en_beats						= Wire(Bool())
+	val (count_beats,wrap_beats)		= Counter(en_beats, OutBeats)
+
+	val en_compress						= Wire(Bool())
+	val (count_compress,wrap_compress)	= Counter(en_compress, CompressCycles)
+
+	val accumulator						= RegInit(UInt(32.W),0.U)
+
+	val sRecv :: sCompress :: sSend :: Nil = Enum(3)
+	val state = RegInit(sRecv)
+	switch(state){
+		is(sRecv){
+			when(io.in.fire() && io.in.bits.last===1.U){
+				state := sCompress
+			}
+		}
+		is(sCompress){
+			when(wrap_compress){
+				state := sSend
+			}
+		}
+		is(sSend){
+			when(wrap_beats){
+				state := sRecv
+			}
+		}
+	}
+	io.in.ready		:= state === sRecv
+	io.out.valid	:= state === sSend
+
+	when(io.in.fire()){
+		accumulator		:= accumulator + io.in.bits.data(31,0)
+	}.otherwise{
+		when(wrap_beats){
+			accumulator	:= 0.U
+		}
+	}
+
+	when(state === sCompress){
+		en_compress	:= true.B
+	}.otherwise{
+		en_compress	:= false.B
+	}
+
+	{//out control
+		en_beats		:= io.out.fire()
+
+		when(wrap_beats){
+			io.out.bits.last	:= 1.U
+		}.otherwise{
+			io.out.bits.last	:= 0.U
+		}
+		io.out.bits.data		:= accumulator
+	}
+	
+
+}
