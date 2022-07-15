@@ -7,9 +7,9 @@ import common.ToAllOnes
 import common.BaseVIO
 import common.BaseILA
 
-class HBMCompress() extends Module{
+class HBMCompress(NumChannels:Int=4,Factor:Int=4) extends Module{
 	def NUM_TOTAL_CHANNELS = 32
-	def init_size_byte = 32L*1024//(32L*256*1024*1024)
+	def init_size_byte = (256L*1024*1024*NumChannels)
 	val io = IO(new Bundle{
 		val axi 			= Vec(NUM_TOTAL_CHANNELS,AXI_HBM())
 		// val start 			= Input(UInt(1.W))
@@ -105,9 +105,9 @@ class HBMCompress() extends Module{
 
 	//compress start
 	def TOTAL_CMDS = 256*1024
-	val compressorHBM = Module(new CompressorHBM())
+	val compressorHBM = Module(new CompressorHBM(NumChannels,Factor))
 
-	for(i<-0 until compressorHBM.NUM_CHANNELS){
+	for(i<-0 until NumChannels){
 		compressorHBM.io.hbm_ar(i)	<> io.axi(i).ar
 		compressorHBM.io.hbm_r(i)	<> io.axi(i).r
 	}
@@ -142,8 +142,8 @@ class HBMCompress() extends Module{
 	when(cmd_in.fire()){
 		r_cmd_count	:= r_cmd_count+1.U
 
-		when((r_cmd_count+1.U)%compressorHBM.NUM_CHANNELS.U === 0.U){
-			r_cmd_addr	:= r_cmd_addr + 4096.U - (256L*1024*1024*(compressorHBM.NUM_CHANNELS-1)).U
+		when((r_cmd_count+1.U)%NumChannels.U === 0.U){
+			r_cmd_addr	:= r_cmd_addr + 4096.U - (256L*1024*1024*(NumChannels-1)).U
 		}.otherwise{
 			r_cmd_addr	:= r_cmd_addr + (256L*1024*1024).U
 		}

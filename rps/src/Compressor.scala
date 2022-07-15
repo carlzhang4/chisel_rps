@@ -10,35 +10,34 @@ import common.connection.SerialRouter
 import common.connection.SerialArbiter
 import common.connection.XArbiter
 
-class CompressorHBM() extends Module{
-	def NUM_CHANNELS = 4
+class CompressorHBM(val NumChannels:Int=4, Factor:Int=4) extends Module{
 	def TODO_32 = 32
 	val io = IO(new Bundle{
-		val hbm_ar	= Vec(NUM_CHANNELS, Decoupled(AXI_HBM_ADDR()))
-		val hbm_r	= Vec(NUM_CHANNELS, Flipped(Decoupled(AXI_HBM_R()))) 
+		val hbm_ar	= Vec(NumChannels, Decoupled(AXI_HBM_ADDR()))
+		val hbm_r	= Vec(NumChannels, Flipped(Decoupled(AXI_HBM_R()))) 
 		val cmd_in	= Flipped(Decoupled(new Meta2Compressor))
 		val out 	= Decoupled(new CompressData)
 	})
-	val readers 	= Seq.fill(NUM_CHANNELS)(Module(new ChannelReader))
+	val readers 	= Seq.fill(NumChannels)(Module(new ChannelReader(Factor)))
 
 	val router		= {
-		val router = SimpleRouter(new Meta2Compressor, NUM_CHANNELS)
+		val router = SimpleRouter(new Meta2Compressor, NumChannels)
 		router.io.in <> io.cmd_in
-		for(i <- 0 until NUM_CHANNELS){
+		for(i <- 0 until NumChannels){
 			router.io.out(i) <> readers(i).io.cmd_in
 		}
 		router.io.idx	:= io.cmd_in.bits.addr(32,28) //todo 256M
 		router
 	}
 
-	for(i<-0 until NUM_CHANNELS){
+	for(i<-0 until NumChannels){
 		readers(i).io.ar	<> io.hbm_ar(i)
 		readers(i).io.r		<> io.hbm_r(i)
 	}
 
 	val arbiter		= {
-		val arbiter = SerialArbiter(new CompressData, NUM_CHANNELS)
-		for(i<-0 until NUM_CHANNELS){
+		val arbiter = SerialArbiter(new CompressData, NumChannels)
+		for(i<-0 until NumChannels){
 			arbiter.io.in(i)	<> readers(i).io.out
 			arbiter.io.last(i)	<> readers(i).io.out.bits.last
 		}
@@ -46,7 +45,7 @@ class CompressorHBM() extends Module{
 	}
 	arbiter.io.out	<> io.out
 }
-class ChannelReader() extends Module{
+class ChannelReader(Factor:Int) extends Module{
 	/*
 	* hbm port 256 bits = 32 byte
 	* ar max 16 beats = 512 bytes
@@ -136,73 +135,35 @@ class ChannelReader() extends Module{
 	q_data.io.in.bits.data	:= Cat(io.r.bits.data, first_data)
 	q_data.io.in.bits.last	:= wrap_push//count_push+64.U === TODO_RAW_PACKET_SIZE.U
 	
-	val compressBlock		= Module(new CompressBlock())
+	val compressBlock		= Module(new CompressBlock(Factor))
 	compressBlock.io.in	<> q_data.io.out
 	io.out	<> compressBlock.io.out
 }
 
-class CompressBlock() extends Module{
-	def NUM_UNITS = 4
+class CompressBlock(Factor:Int) extends Module{
 	val io = IO(new Bundle{
 		val in	= Flipped(Decoupled(new CompressData))
 		val out = Decoupled(new CompressData)
 	})
 
-	val compressUnits	= Seq.fill(NUM_UNITS)(Module(new CompressUnit()))
+	val compressUnits	= Seq.fill(Factor)(Module(new CompressUnit()))
 	
-	val idx	= RegInit(UInt((log2Up(NUM_UNITS)).W), 0.U)
+	val idx	= RegInit(UInt((log2Up(Factor)).W), 0.U)
 	when(io.in.fire() && io.in.bits.last===1.U){
 		idx	:= idx + 1.U
 	}
 
-	val router	= SerialRouter(new CompressData, NUM_UNITS)
-	val arbiter =  SerialArbiter(new CompressData, NUM_UNITS)
+	val router	= SerialRouter(new CompressData, Factor)
+	val arbiter =  SerialArbiter(new CompressData, Factor)
 	router.io.in	<> io.in
 	router.io.idx	<> idx
 	router.io.last	<> io.in.bits.last
 	arbiter.io.out	<> io.out
-	for(i<-0 until NUM_UNITS){
+	for(i<-0 until Factor){
 		router.io.out(i)	<> compressUnits(i).io.in
 		arbiter.io.in(i)	<> compressUnits(i).io.out
 		arbiter.io.last(i)	<> compressUnits(i).io.out.bits.last
 	}
-
-	// //todo 
-	// val c_in_valid		= Cat(compressUnits.map(_.io.in.valid))
-	// val c_in_ready		= Cat(compressUnits.map(_.io.in.ready))
-	// val c_out_valid		= Cat(compressUnits.map(_.io.out.valid))
-	// val c_out_ready		= Cat(compressUnits.map(_.io.out.ready))
-	// val arbiter_last	= Cat(compressUnits.map(_.io.out.bits.last))
-
-	// class ila_compress_block(seq:Seq[Data]) extends BaseILA(seq)
-	// val inst_ila_compress_block = Module(new ila_compress_block(Seq(	
-	// 	idx,
-	// 	router.io.in.valid,
-	// 	router.io.in.ready,
-	// 	router.io.last,
-
-	// 	router.io.out(0).valid,
-	// 	router.io.out(0).ready,
-
-	// 	router.io.out(1).valid,
-	// 	router.io.out(1).ready,
-
-	// 	router.io.out(2).valid,
-	// 	router.io.out(2).ready,
-
-	// 	router.io.out(3).valid,
-	// 	router.io.out(3).ready,
-
-	// 	c_in_valid,
-	// 	c_in_ready,
-	// 	c_out_valid,
-	// 	c_out_ready,
-
-	// 	arbiter_last,
-				
-	// )))
-	// inst_ila_compress_block.connect(clock)
-	
 }
 class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module {
 	/*
