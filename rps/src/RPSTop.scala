@@ -44,14 +44,12 @@ class RPSTop extends RawModule {
 		hbmDriver.io.axi_hbm(i).hbm_init()	// Read hbm_init function if you're not familiar with AXI.
 	}
 
-	val hbmCompress = withClockAndReset(userClk, !userRstn) {Module(new HBMCompress)}
-
-	for(i<-0 until 32){
-		hbmDriver.io.axi_hbm(i) <> XAXIConverter(hbmCompress.io.axi(i), userClk, userRstn, hbmClk, hbmRstn)
-		// hbmDriver.io.axi_hbm(i) <> hbmCompress.io.axi(i)
-	}
+	val hbmCompress = withClockAndReset(userClk, !userRstn) {Module(new HBMCompress(4,12))}
+	hbmDriver.io.axi_hbm(0) <> XAXIConverter(hbmCompress.io.axi(0), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(1) <> XAXIConverter(hbmCompress.io.axi(1), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(2) <> XAXIConverter(hbmCompress.io.axi(2), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(3) <> XAXIConverter(hbmCompress.io.axi(3), userClk, userRstn, hbmClk, hbmRstn)
 	
-    
 	dontTouch(hbmClk)
 	dontTouch(hbmRstn)
 }

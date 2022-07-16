@@ -39,7 +39,6 @@ class CompressorHBM(val NumChannels:Int=4, Factor:Int=4) extends Module{
 		val arbiter = SerialArbiter(new CompressData, NumChannels)
 		for(i<-0 until NumChannels){
 			arbiter.io.in(i)	<> readers(i).io.out
-			arbiter.io.last(i)	<> readers(i).io.out.bits.last
 		}
 		arbiter
 	}
@@ -150,7 +149,10 @@ class CompressBlock(Factor:Int) extends Module{
 	
 	val idx	= RegInit(UInt((log2Up(Factor)).W), 0.U)
 	when(io.in.fire() && io.in.bits.last===1.U){
-		idx	:= idx + 1.U
+		idx			:= idx + 1.U
+		when(idx+1.U === Factor.U){
+			idx		:= 0.U
+		}
 	}
 
 	val router	= SerialRouter(new CompressData, Factor)
@@ -162,7 +164,6 @@ class CompressBlock(Factor:Int) extends Module{
 	for(i<-0 until Factor){
 		router.io.out(i)	<> compressUnits(i).io.in
 		arbiter.io.in(i)	<> compressUnits(i).io.out
-		arbiter.io.last(i)	<> compressUnits(i).io.out.bits.last
 	}
 }
 class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module {
@@ -181,7 +182,8 @@ class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module 
 	val en_compress						= Wire(Bool())
 	val (count_compress,wrap_compress)	= Counter(en_compress, CompressCycles)
 
-	val accumulator						= RegInit(UInt(32.W),0.U)
+	val is_head 						= RegInit(UInt(1.W),1.U)
+	val first_data						= RegInit(UInt(32.W),0.U)
 
 	val sRecv :: sCompress :: sSend :: Nil = Enum(3)
 	val state = RegInit(sRecv)
@@ -205,12 +207,11 @@ class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module 
 	io.in.ready		:= state === sRecv
 	io.out.valid	:= state === sSend
 
-	when(io.in.fire()){
-		accumulator		:= accumulator + io.in.bits.data(31,0)
-	}.otherwise{
-		when(wrap_beats){
-			accumulator	:= 0.U
-		}
+	when(io.in.fire() && is_head===1.U){
+		first_data		:= io.in.bits.data(31,0)
+		is_head			:= 0.U
+	}.elsewhen(state===sSend){
+		is_head			:= 1.U
 	}
 
 	when(state === sCompress){
@@ -227,7 +228,7 @@ class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module 
 		}.otherwise{
 			io.out.bits.last	:= 0.U
 		}
-		io.out.bits.data		:= accumulator
+		io.out.bits.data		:= first_data
 	}
 	
 
