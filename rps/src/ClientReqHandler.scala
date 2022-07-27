@@ -108,17 +108,19 @@ class ChannelWriter(index:Int) extends Module{
 class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 	def TODO_32 = 32
 	def PACK_SIZE = 4*1024
+	def CLIENT_HOST_MEM_OFFSET = 0
+	def HOST_MEM_PARTITION = 1024L*1024*1024
 	val io = IO(new Bundle{
 		val recv_meta		= Flipped(Decoupled(new RECV_META))
 		val recv_data		= Flipped(Decoupled(AXIS(512)))
 		val axi_hbm			= Vec(NumChannels,AXI_HBM())
 
-		val meta_from_host	= Flipped(Decoupled(new MetaFromHost))
 		val meta2host		= Decoupled(new Meta2Host)
 		val data2host		= Decoupled(new Data2Host)
+		val meta_from_host	= Flipped(Decoupled(new MetaFromHost))
 
-		val out_meta		= Decoupled(new TX_META)
-		val out_data		= Decoupled(AXIS(512))
+		val send_meta		= Decoupled(new TX_META)
+		val send_data		= Decoupled(AXIS(512))
 	})
 
 	for(i<-0 until NumChannels){
@@ -131,18 +133,18 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 	q_meta_dup.io.in.bits	:= io.recv_meta.bits
 	Connection.one2many(io.recv_meta)(q_meta.io.in,q_meta_dup.io.in)
 
-	//read from HBM and connect to io.out_data
+	//read from HBM and connect to io.send_data
 	val compressorHBM 	= {
 		val t = Module(new CompressorHBM(NumChannels,Factor))
 		for(i<-0 until NumChannels){
 			t.io.hbm_ar(i)	<> io.axi_hbm(i).ar
 			t.io.hbm_r(i)	<> io.axi_hbm(i).r
 		}
-		io.out_data.valid		:= t.io.out.valid
-		io.out_data.ready		<> t.io.out.ready
-		io.out_data.bits.data	:= t.io.out.bits.data
-		io.out_data.bits.last	:= t.io.out.bits.last
-		ToAllOnes(io.out_data.bits.keep)
+		io.send_data.valid		:= t.io.out.valid
+		io.send_data.ready		<> t.io.out.ready
+		io.send_data.bits.data	:= t.io.out.bits.data
+		io.send_data.bits.last	:= t.io.out.bits.last
+		ToAllOnes(io.send_data.bits.keep)
 		t
 	}
 
@@ -154,9 +156,9 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 	val reg_offset							= RegInit(UInt(48.W),0.U)
 	
 	Connection.one2many(q_meta_dup.io.out)(q_2host_meta.io.in, q_2host_data.io.in, q_compress_cmd.io.in)
-	q_2host_meta.io.in.bits.addr_offset		:= reg_offset
+	q_2host_meta.io.in.bits.addr_offset		:= (reg_offset%HOST_MEM_PARTITION.U)+CLIENT_HOST_MEM_OFFSET.U
 	q_2host_meta.io.in.bits.len				:= 64.U
-	q_2host_data.io.in.bits.data			:= reg_offset
+	q_2host_data.io.in.bits.data			:= reg_offset+CLIENT_HOST_MEM_OFFSET.U
 	q_2host_data.io.in.bits.last			:= 1.U
 	q_compress_cmd.io.in.bits.addr			:= reg_addr
 
@@ -182,12 +184,12 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 
 	//compress cmd directly, can add a many2one to be controlled by cpu
 	compressorHBM.io.cmd_in				<> q_compress_cmd.io.out
-	Connection.one2one(io.meta_from_host)(io.out_meta)
-	io.out_meta.bits.rdma_cmd			:= APP_OP_CODE.APP_SEND
-	io.out_meta.bits.qpn				:= 2.U
-	io.out_meta.bits.length				:= (2*1024).U//todo, to ssd pack size 
-	io.out_meta.bits.local_vaddr		:= 0.U
-	io.out_meta.bits.remote_vaddr		:= 0.U
+	Connection.one2one(io.meta_from_host)(io.send_meta)
+	io.send_meta.bits.rdma_cmd			:= APP_OP_CODE.APP_SEND
+	io.send_meta.bits.qpn				:= 2.U
+	io.send_meta.bits.length				:= (2*1024).U//todo, to ssd pack size 
+	io.send_meta.bits.local_vaddr		:= 0.U
+	io.send_meta.bits.remote_vaddr		:= 0.U
 
 	//write data into HBM using recv meta/data
 	{
@@ -213,6 +215,15 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 			}	
 		}
 	}
-	
 
+	RPSConters.record(io.recv_meta.fire(), "ClientReqHandler_RecvMetaFire")
+	RPSConters.record(io.recv_data.fire(), "ClientReqHandler_RecvDataFire")
+	RPSConters.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "ClientReqHandler_RecvDataLast")
+	RPSConters.record(io.meta2host.fire(), "ClientReqHandler_Meta2HostFire")
+	RPSConters.record(io.data2host.fire(), "ClientReqHandler_Data2HostFire")
+	RPSConters.record(io.data2host.fire()&io.data2host.bits.last.asBool(), "ClientReqHandler_Data2HostLast")
+	RPSConters.record(io.meta_from_host.fire(), "ClientReqHandler_MetaFromHostFire")
+	RPSConters.record(io.send_meta.fire(), "ClientReqHandler_SendMetaFire")
+	RPSConters.record(io.send_data.fire(), "ClientReqHandler_SendDataFire")
+	RPSConters.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "ClientReqHandler_SendDataLast")
 }

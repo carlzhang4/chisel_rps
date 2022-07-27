@@ -159,7 +159,6 @@ class CompressBlock(Factor:Int) extends Module{
 	val arbiter =  SerialArbiter(new CompressData, Factor)
 	router.io.in	<> io.in
 	router.io.idx	<> idx
-	router.io.last	<> io.in.bits.last
 	arbiter.io.out	<> io.out
 	for(i<-0 until Factor){
 		router.io.out(i)	<> compressUnits(i).io.in
@@ -171,7 +170,6 @@ class CompressUnit(CompressCycles:Int = 2200, OutBeats:Int = 32) extends Module 
 		OutBeats (default 32): beats after compression, 32*512/8 = 2K
 	*/
 	val io = IO(new Bundle{
-		// val compress_cmd_in		= Flipped(Decoupled(new CompressDescriptor))
 		val in 					= Flipped(Decoupled(new CompressData))
 		val out					= Decoupled(new CompressData)
 	})
