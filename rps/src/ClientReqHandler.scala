@@ -158,7 +158,7 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 	Connection.one2many(q_meta_dup.io.out)(q_2host_meta.io.in, q_2host_data.io.in, q_compress_cmd.io.in)
 	q_2host_meta.io.in.bits.addr_offset		:= (reg_offset%HOST_MEM_PARTITION.U)+CLIENT_HOST_MEM_OFFSET.U
 	q_2host_meta.io.in.bits.len				:= 64.U
-	q_2host_data.io.in.bits.data			:= reg_offset+CLIENT_HOST_MEM_OFFSET.U
+	q_2host_data.io.in.bits.data			:= reg_offset+CLIENT_HOST_MEM_OFFSET.U+1.U
 	q_2host_data.io.in.bits.last			:= 1.U
 	q_compress_cmd.io.in.bits.addr			:= reg_addr
 

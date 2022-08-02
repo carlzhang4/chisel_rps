@@ -1,0 +1,5 @@
+su root
+insmod /home/cj/qdma_dev/qdma_driver/src/qdma-pf.ko
+echo 1024 > /sys/bus/pci/devices/0000:3d:00.0/qdma/qmax
+dma-ctl qdma3d000 q add idx 0 mode st dir bi
+dma-ctl qdma3d000 q start idx 0 dir bi desc_bypass_en pfetch_bypass_en

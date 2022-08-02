@@ -71,6 +71,7 @@ class Client()extends Module{
 		val state						= RegInit(sIdle)
 		switch(state){
 			is(sIdle){
+				reg_count				:= 0.U
 				when(io.start===1.U){
 					state				:= sWork
 				}

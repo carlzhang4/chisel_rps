@@ -22,7 +22,6 @@ class ChunckServer extends Module{
 	
 	io.recv_data.ready	:= 1.U//todo discard data
 
-	val reg_msg_num		= RegInit(UInt(24.W), 0.U)
 	val recv_meta_delay	= RegSlice(TODO_CS_CYCLES)(io.recv_meta)
 	Connection.one2many(recv_meta_delay)(io.send_data, io.send_meta)
 	io.send_meta.bits.rdma_cmd		:= APP_OP_CODE.APP_SEND

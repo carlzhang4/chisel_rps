@@ -129,8 +129,12 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		val axi_hbm					= Vec(NumChannels,AXI_HBM())
 		val axib					= Flipped(new AXIB)
 
-		val start					= Input(UInt(1.W))
+		val start_addr				= Input(UInt(64.W))
 		val num_rpcs				= Input(UInt(32.W))
+		val pfch_tag				= Input(UInt(32.W))
+		val tag_index				= Input(UInt(32.W))
+		val start					= Input(UInt(32.W))
+
 		val counters 				= Vec(RPSConters.MAX_NUM, Output(UInt(32.W)))
 
 		val c2h_cmd					= Decoupled(new C2H_CMD)
@@ -146,15 +150,15 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		t.io.c2h_data	<> io.c2h_data
 		t.io.h2c_cmd	<> io.h2c_cmd
 		t.io.h2c_data	<> io.h2c_data
-		t.io.pfch_tag	<> 0.U//todo
-		t.io.tag_index	<> 0.U//todo
-		t.io.start_addr	<> 0.U//todo
+		t.io.pfch_tag	<> io.pfch_tag
+		t.io.tag_index	<> io.tag_index
+		t.io.start_addr	<> io.start_addr
 		t
 	}
 	
 	//generate flow
 	val net	= Module(new RoceSim)
-	net.io.start						:= io.start
+	net.io.start						:= io.start===1.U
 	net.io.num_rpcs						:= io.num_rpcs
 
 	val arbiter_net						= CompositeArbiter(new TX_META, AXIS(512), 2)

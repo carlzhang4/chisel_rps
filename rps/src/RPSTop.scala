@@ -47,12 +47,6 @@ class RPSTop extends RawModule {
 		hbmDriver.io.axi_hbm(i).hbm_init()	// Read hbm_init function if you're not familiar with AXI.
 	}
 
-	val hbmCompress = withClockAndReset(userClk, !userRstn) {Module(new HBMCompress(4,12))}
-	hbmDriver.io.axi_hbm(0) <> XAXIConverter(hbmCompress.io.axi(0), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(1) <> XAXIConverter(hbmCompress.io.axi(1), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(2) <> XAXIConverter(hbmCompress.io.axi(2), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(3) <> XAXIConverter(hbmCompress.io.axi(3), userClk, userRstn, hbmClk, hbmRstn)
-	
 	dontTouch(hbmClk)
 	dontTouch(hbmRstn)
 	//QDMA
@@ -72,52 +66,31 @@ class RPSTop extends RawModule {
 	qdma.io.user_arstn	:= userRstn
 	qdma.io.soft_rstn	:= 1.U
 
-	val axi_slave = withClockAndReset(qdma.io.user_clk,!qdma.io.user_arstn){Module(new SimpleAXISlave(new AXIB))}//withClockAndReset(qdma.io.pcie_clk,!qdma.io.pcie_arstn)
-	axi_slave.io.axi	<> XAXIConverter(qdma.io.axib, qdma.io.pcie_clk, qdma.io.pcie_arstn, qdma.io.user_clk, qdma.io.user_arstn)
 
 	val control_reg = qdma.io.reg_control
 	val status_reg = qdma.io.reg_status
 
-	//H2C
-	val h2c =  withClockAndReset(qdma.io.user_clk,!qdma.io.user_arstn){Module(new H2CLatency())}
-	h2c.io.start_addr			:= Cat(control_reg(100), control_reg(101))
-	h2c.io.burst_length			:= control_reg(102)
-	h2c.io.start				:= control_reg(103)
-	h2c.io.total_words			:= control_reg(104)
-	h2c.io.total_cmds			:= control_reg(105)
-	h2c.io.wait_cycles			:= control_reg(106)
-	
-	h2c.io.count_err_data		<> status_reg(100)
-	h2c.io.count_right_data		<> status_reg(101)
-	h2c.io.count_total_words	<> status_reg(102)
-	h2c.io.count_send_cmd		<> status_reg(103)
-	h2c.io.count_time			<> status_reg(104)
-	status_reg(105)				<> h2c.io.count_latency(31,0)
-	status_reg(106)				<> h2c.io.count_latency(63,32)
-	h2c.io.h2c_cmd				<> qdma.io.h2c_cmd
-	h2c.io.h2c_data				<> qdma.io.h2c_data
+	val sw_reset	= control_reg(106) === 1.U
 
-	//C2H
-	val c2h = withClockAndReset(qdma.io.user_clk,!qdma.io.user_arstn){Module(new C2HLatency())}
-	c2h.io.start_addr			:= Cat(control_reg(200), control_reg(201))
-	c2h.io.burst_length			:= control_reg(202)
-	c2h.io.offset				:= control_reg(203)
-	c2h.io.start				:= control_reg(204)
-	c2h.io.total_words			:= control_reg(205)
-	c2h.io.total_cmds			:= control_reg(206)
-	c2h.io.wait_cycles			:= control_reg(207)
-	c2h.io.pfch_tag				:= control_reg(209)
-	c2h.io.tag_index			:= control_reg(210)
-	c2h.io.ack_fire				:= axi_slave.io.axi.w.fire()
-	
-	c2h.io.count_send_cmd		<> status_reg(200)
-	c2h.io.count_send_word		<> status_reg(201)
-	c2h.io.count_time			<> status_reg(202)
-	status_reg(203)				<> c2h.io.count_latency_cmd(31,0)
-	status_reg(204)				<> c2h.io.count_latency_cmd(63,32)
-	status_reg(205)				<> c2h.io.count_latency_data(31,0)
-	status_reg(206)				<> c2h.io.count_latency_data(63,32)
-	c2h.io.count_recv_ack		<> status_reg(207)
-	c2h.io.c2h_cmd			<> qdma.io.c2h_cmd
-	c2h.io.c2h_data			<> qdma.io.c2h_data
+	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BenchNetSim(4,12))}
+
+	hbmDriver.io.axi_hbm(0) <> XAXIConverter(bench.io.axi_hbm(0), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(1) <> XAXIConverter(bench.io.axi_hbm(1), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(2) <> XAXIConverter(bench.io.axi_hbm(2), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(3) <> XAXIConverter(bench.io.axi_hbm(3), userClk, userRstn, hbmClk, hbmRstn)
+
+	bench.io.start_addr			:= Cat(control_reg(100), control_reg(101))
+	bench.io.num_rpcs			:= control_reg(102)
+	bench.io.pfch_tag			:= control_reg(103)
+	bench.io.tag_index			:= control_reg(104)
+	bench.io.start				:= control_reg(105)
+	bench.io.c2h_cmd			<> qdma.io.c2h_cmd
+	bench.io.c2h_data			<> qdma.io.c2h_data
+	bench.io.h2c_cmd			<> qdma.io.h2c_cmd
+	bench.io.h2c_data			<> qdma.io.h2c_data
+	bench.io.axib 				<> XAXIConverter(qdma.io.axib, qdma.io.pcie_clk, qdma.io.pcie_arstn, qdma.io.user_clk, qdma.io.user_arstn)
+
+	for(i<-0 until RPSConters.MAX_NUM){
+		status_reg(100+i) 		:= bench.io.counters(i)
+	}
 }

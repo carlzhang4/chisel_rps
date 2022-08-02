@@ -36,7 +36,7 @@ class CSReqHandler extends Module{
 
 	q_2host_meta.io.in.bits.addr_offset		:= (reg_offset%HOST_MEM_PARTITION.U) + CS_HOST_MEM_OFFSET.U
 	q_2host_meta.io.in.bits.len				:= 64.U
-	q_2host_data.io.in.bits.data			:= reg_offset + CS_HOST_MEM_OFFSET.U
+	q_2host_data.io.in.bits.data			:= reg_offset + CS_HOST_MEM_OFFSET.U + 1.U
 	q_2host_data.io.in.bits.last			:= 1.U
 
 	q_2host_meta.io.out						<> io.meta2host
