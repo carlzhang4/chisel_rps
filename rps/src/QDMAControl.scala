@@ -14,7 +14,7 @@ import common.connection.Connection
 
 class QDMAControl extends Module{
 	val NUM_Q = 4
-	def TODO_32 = 32
+	def TODO_512 = 512
 	def NUM_AXIB_TYPE = 4
 	val NUM_AXIB_TYPE_BITS = log2Up(NUM_AXIB_TYPE)
 
@@ -50,10 +50,23 @@ class QDMAControl extends Module{
 		//aw and w
 		io.axi.aw.ready		:= 1.U
 
-		val q				= XQueue(new MetaFromHost, TODO_32)
+		val q				= XQueue(new MetaFromHost, TODO_512)//must be large enough, otherwise bridge write may fail, num_w_fire < num_aw_fire
 		Connection.one2one(q.io.in)(io.axi.w)
 		q.io.in.bits.data	<> io.axi.w.bits.data
 		q.io.out			<> io.metaFromHost
+		//debug
+		val reg_max			= RegInit(UInt(32.W),0.U)
+		val reg_cur			= RegInit(UInt(32.W),0.U)
+
+		when(io.axi.w.valid && !io.axi.w.ready){
+			reg_cur			:= reg_cur+1.U
+		}.otherwise{
+			reg_cur			:= 0.U
+		}
+		when(reg_cur > reg_max){
+			reg_max			:= reg_cur
+		}
+		RPSReporter.report(reg_max,"QDMAControl::reg_max")
 	}
 
 	//h2c is useless
@@ -85,4 +98,6 @@ class QDMAControl extends Module{
 		io.c2h_data.bits.last		<> io.data2host.bits.last
 
 	}
+	RPSConter.record(io.axi.aw.fire(), "QDMAControl::aw_fire")
+	RPSConter.record(io.axi.w.fire(), "QDMAControl::w_fire")
 }

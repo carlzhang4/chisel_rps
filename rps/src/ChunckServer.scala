@@ -40,10 +40,10 @@ class ChunckServer extends Module{
 		reg_count					:= reg_count+1.U
 	}
 
-	RPSConters.record(io.send_meta.fire(), "CS_SendMetaFire")
-	RPSConters.record(io.send_data.fire(), "CS_SendDataFire")
-	RPSConters.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "CS_SendDataLast")
-	RPSConters.record(io.recv_meta.fire(), "CS_RecvMetaFire")
-	RPSConters.record(io.recv_data.fire(), "CS_RecvDataFire")
-	RPSConters.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "CS_RecvDataLast")
+	RPSConter.record(io.send_meta.fire(), "CS_SendMetaFire")
+	RPSConter.record(io.send_data.fire(), "CS_SendDataFire")
+	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "CS_SendDataLast")
+	RPSConter.record(io.recv_meta.fire(), "CS_RecvMetaFire")
+	RPSConter.record(io.recv_data.fire(), "CS_RecvDataFire")
+	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "CS_RecvDataLast")
 }

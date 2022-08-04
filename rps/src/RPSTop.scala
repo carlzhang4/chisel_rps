@@ -90,7 +90,11 @@ class RPSTop extends RawModule {
 	bench.io.h2c_data			<> qdma.io.h2c_data
 	bench.io.axib 				<> XAXIConverter(qdma.io.axib, qdma.io.pcie_clk, qdma.io.pcie_arstn, qdma.io.user_clk, qdma.io.user_arstn)
 
-	for(i<-0 until RPSConters.MAX_NUM){
+	for(i<-0 until RPSConter.MAX_NUM){
 		status_reg(100+i) 		:= bench.io.counters(i)
+	}
+
+	for(i<-0 until RPSReporter.MAX_NUM){
+		status_reg(100+RPSConter.MAX_NUM+i) 		:= bench.io.reports(i)
 	}
 }

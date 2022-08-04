@@ -19,11 +19,16 @@ import common.ToAllOnes
 import common.storage.RegSlice
 import common.connection.SerialRouter
 import common.connection.SimpleRouter
-import common.XCounters
+import common.XCounter
+import common.Reporter
 
-object RPSConters extends XCounters("rps"){
+object RPSConter extends XCounter("RPS"){
 	override def MAX_NUM = 64
 } 
+
+object RPSReporter extends Reporter("RPS"){
+	override def MAX_NUM = 64
+}
 //Roce interface
 object APP_OP_CODE extends ChiselEnum{
   val APP_READ    = Value
@@ -135,7 +140,8 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		val tag_index				= Input(UInt(32.W))
 		val start					= Input(UInt(32.W))
 
-		val counters 				= Vec(RPSConters.MAX_NUM, Output(UInt(32.W)))
+		val counters 				= Vec(RPSConter.MAX_NUM, Output(UInt(32.W)))
+		val reports					= Vec(RPSReporter.MAX_NUM, Output(UInt(32.W)))
 
 		val c2h_cmd					= Decoupled(new C2H_CMD)
 		val c2h_data				= Decoupled(new C2H_DATA) 
@@ -226,12 +232,20 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		router.io.out(1)				<> cs_req_handler.io.meta_from_host
 	}
 
-	val counters		= Wire(Vec(RPSConters.MAX_NUM,UInt(32.W)))
-	for(i<- 0 until RPSConters.MAX_NUM){
+	val counters		= Wire(Vec(RPSConter.MAX_NUM,UInt(32.W)))
+	for(i<- 0 until RPSConter.MAX_NUM){
 		counters(i)		:= 0.U
 		io.counters(i)	:= counters(i)
 	}
-	RPSConters.get_counters(counters)
-	RPSConters.print_msgs()
+	RPSConter.get_counters(counters)
+	RPSConter.print_msgs()
+
+	val reports			= Wire(Vec(RPSReporter.MAX_NUM,UInt(32.W)))
+	for(i<- 0 until RPSReporter.MAX_NUM){
+		reports(i)		:= 0.U
+		io.reports(i)	:= reports(i)
+	}
+	RPSReporter.get_reports(reports)
+	RPSReporter.print_msgs()
 	
 }

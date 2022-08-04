@@ -96,19 +96,55 @@ class Client()extends Module{
 		}
 	}
 
-	{//recv
+	val reg_count_recv_meta = {//recv
+		val reg_count_meta			= RegInit(UInt(32.W),0.U)
 		val meta					= io.recv_meta
 		val data					= io.recv_data
 		meta.ready					:= 1.U
 		data.ready					:= 1.U
-		dontTouch(meta)
-		dontTouch(data)
+
+		when(risingStart){
+			reg_count_meta			:= 0.U
+		}.otherwise{
+			when(meta.fire()){
+				reg_count_meta		:= reg_count_meta+1.U
+			}
+		}
+		reg_count_meta
 	}
 
-	RPSConters.record(io.send_meta.fire(), "Client_SendMetaFire")
-	RPSConters.record(io.send_data.fire(), "Client_SendDataFire")
-	RPSConters.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "Client_SendDataLast")
-	RPSConters.record(io.recv_meta.fire(), "Client_RecvMetaFire")
-	RPSConters.record(io.recv_data.fire(), "Client_RecvDataFire")
-	RPSConters.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "Client_RecvDataLast")
+	val reg_time					= RegInit(UInt(64.W),0.U)
+	val reg_latency					= RegInit(UInt(64.W),0.U)
+
+	when(io.start === 1.U){//when reset, it also resets
+		when(reg_count_recv_meta =/= io.num_rpcs){
+			reg_time				:= reg_time+1.U
+		}.otherwise{
+			reg_time				:= reg_time
+		}
+	}
+
+	when(io.start === 1.U){//when reset, it also resets
+		when(io.send_meta.fire() && io.recv_meta.fire()){
+			reg_latency				:= reg_latency
+		}.elsewhen(io.send_meta.fire()){
+			reg_latency				:= reg_latency - reg_time
+		}.elsewhen(io.recv_meta.fire()){
+			reg_latency				:= reg_latency + reg_time
+		}.otherwise{
+			reg_latency				:= reg_latency
+		}
+	}
+
+	RPSConter.record(io.send_meta.fire(), "Client_SendMetaFire")
+	RPSConter.record(io.send_data.fire(), "Client_SendDataFire")
+	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "Client_SendDataLast")
+	RPSConter.record(io.recv_meta.fire(), "Client_RecvMetaFire")
+	RPSConter.record(io.recv_data.fire(), "Client_RecvDataFire")
+	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "Client_RecvDataLast")
+
+	RPSReporter.report(reg_time(63,32), "Client::reg_time_high")
+	RPSReporter.report(reg_time(31,0), "Client::reg_time_low")
+	RPSReporter.report(reg_latency(63,32), "Client::reg_latency_high")
+	RPSReporter.report(reg_latency(31,0), "Client::reg_latency_high")
 }

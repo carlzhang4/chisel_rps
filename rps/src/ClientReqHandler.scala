@@ -216,14 +216,14 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 		}
 	}
 
-	RPSConters.record(io.recv_meta.fire(), "ClientReqHandler_RecvMetaFire")
-	RPSConters.record(io.recv_data.fire(), "ClientReqHandler_RecvDataFire")
-	RPSConters.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "ClientReqHandler_RecvDataLast")
-	RPSConters.record(io.meta2host.fire(), "ClientReqHandler_Meta2HostFire")
-	RPSConters.record(io.data2host.fire(), "ClientReqHandler_Data2HostFire")
-	RPSConters.record(io.data2host.fire()&io.data2host.bits.last.asBool(), "ClientReqHandler_Data2HostLast")
-	RPSConters.record(io.meta_from_host.fire(), "ClientReqHandler_MetaFromHostFire")
-	RPSConters.record(io.send_meta.fire(), "ClientReqHandler_SendMetaFire")
-	RPSConters.record(io.send_data.fire(), "ClientReqHandler_SendDataFire")
-	RPSConters.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "ClientReqHandler_SendDataLast")
+	RPSConter.record(io.recv_meta.fire(), "ClientReqHandler_RecvMetaFire")
+	RPSConter.record(io.recv_data.fire(), "ClientReqHandler_RecvDataFire")
+	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "ClientReqHandler_RecvDataLast")
+	RPSConter.record(io.meta2host.fire(), "ClientReqHandler_Meta2HostFire")
+	RPSConter.record(io.data2host.fire(), "ClientReqHandler_Data2HostFire")
+	RPSConter.record(io.data2host.fire()&io.data2host.bits.last.asBool(), "ClientReqHandler_Data2HostLast")
+	RPSConter.record(io.meta_from_host.fire(), "ClientReqHandler_MetaFromHostFire")
+	RPSConter.record(io.send_meta.fire(), "ClientReqHandler_SendMetaFire")
+	RPSConter.record(io.send_data.fire(), "ClientReqHandler_SendDataFire")
+	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "ClientReqHandler_SendDataLast")
 }

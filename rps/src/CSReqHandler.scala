@@ -62,14 +62,14 @@ class CSReqHandler extends Module{
 		reg_count					:= reg_count+1.U
 	}
 
-	RPSConters.record(io.recv_meta.fire(), "CSReqHandler_RecvMetaFire")
-	RPSConters.record(io.recv_data.fire(), "CSReqHandler_RecvDataFire")
-	RPSConters.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "CSReqHandler_RecvDataLast")
-	RPSConters.record(io.meta2host.fire(), "CSReqHandler_Meta2HostFire")
-	RPSConters.record(io.data2host.fire(), "CSReqHandler_Data2HostFire")
-	RPSConters.record(io.data2host.fire()&io.data2host.bits.last.asBool(), "CSReqHandler_Data2HostLast")
-	RPSConters.record(io.meta_from_host.fire(), "CSReqHandler_MetaFromHostFire")
-	RPSConters.record(io.send_meta.fire(), "CSReqHandler_SendMetaFire")
-	RPSConters.record(io.send_data.fire(), "CSReqHandler_SendDataFire")
-	RPSConters.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "CSReqHandler_SendDataLast")
+	RPSConter.record(io.recv_meta.fire(), "CSReqHandler_RecvMetaFire")
+	RPSConter.record(io.recv_data.fire(), "CSReqHandler_RecvDataFire")
+	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "CSReqHandler_RecvDataLast")
+	RPSConter.record(io.meta2host.fire(), "CSReqHandler_Meta2HostFire")
+	RPSConter.record(io.data2host.fire(), "CSReqHandler_Data2HostFire")
+	RPSConter.record(io.data2host.fire()&io.data2host.bits.last.asBool(), "CSReqHandler_Data2HostLast")
+	RPSConter.record(io.meta_from_host.fire(), "CSReqHandler_MetaFromHostFire")
+	RPSConter.record(io.send_meta.fire(), "CSReqHandler_SendMetaFire")
+	RPSConter.record(io.send_data.fire(), "CSReqHandler_SendDataFire")
+	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "CSReqHandler_SendDataLast")
 }
