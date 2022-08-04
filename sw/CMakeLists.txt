@@ -5,17 +5,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 project(rps LANGUAGES CXX VERSION 0.1)
 
 add_definitions(-mavx512f)
-add_compile_options(-O3 -march=native)
+add_compile_options(-O3 -g -march=native)
 
+aux_source_directory(src SRCS)
 
 add_executable(rps
+	${SRCS}
 	rps.cpp
 )
-#target_include_directories(rps PUBLIC
-#	${CMAKE_SOURCE_DIR}/dma
-#	${CMAKE_CURRENT_SOURCE_DIR}/mmio
-#)
+
 target_link_libraries(rps
+	qdma
+	pthread
+	numa
+)
+
+add_executable(check_status
+	${SRCS}
+	check_status.cpp
+)
+
+target_link_libraries(check_status
 	qdma
 	pthread
 )
