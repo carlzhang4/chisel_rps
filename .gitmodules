@@ -7,3 +7,9 @@
 [submodule "hbm"]
 	path = hbm
 	url = git@github.com:RC4ML/chisel_hbm.git
+[submodule "roce"]
+	path = roce
+	url = git@github.com:qqwert0/roce.git
+[submodule "cmac"]
+	path = cmac
+	url = git@github.com:carlzhang4/cmac.git

@@ -6,6 +6,10 @@ import common.axi.AXIS
 import common.storage.XQueue
 import common.ToZero
 import common.ToAllOnes
+import common.Collector
+import roce.util.TX_META
+import roce.util.RECV_META
+import roce.util.APP_OP_CODE
 
 class Client()extends Module{
 	//client send 4KB data out, and recv 64B rps resp, count the latency
@@ -136,15 +140,37 @@ class Client()extends Module{
 		}
 	}
 
-	RPSConter.record(io.send_meta.fire(), "Client_SendMetaFire")
-	RPSConter.record(io.send_data.fire(), "Client_SendDataFire")
-	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "Client_SendDataLast")
-	RPSConter.record(io.recv_meta.fire(), "Client_RecvMetaFire")
-	RPSConter.record(io.recv_data.fire(), "Client_RecvDataFire")
-	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "Client_RecvDataLast")
+	Collector.fire(io.send_meta)
+	Collector.fire(io.send_data)
+	Collector.fireLast(io.send_data)
+	Collector.fire(io.recv_meta)
+	Collector.fire(io.recv_data)
+	Collector.fireLast(io.recv_data)
 
-	RPSReporter.report(reg_time(63,32), "Client::reg_time_high")
-	RPSReporter.report(reg_time(31,0), "Client::reg_time_low")
-	RPSReporter.report(reg_latency(63,32), "Client::reg_latency_high")
-	RPSReporter.report(reg_latency(31,0), "Client::reg_latency_high")
+	Collector.report(reg_time)
+	Collector.report(reg_latency)
+
+	// val tests = Seq.fill(2)(Module(new Test))
+
+
+	// tests(0).io.in		:= reg_time(31,0)
+	// tests(1).io.in		:= reg_time(63,32)
+
+	// Collector.report(reg_time)
+	// Collector.report(reg_time(63,32),"partial")
+	// Collector.count(risingStart===1.U,"risingStart===1.U")
+	// Collector.count(risingStart===0.U,"risingStart===0.U",width = 64)
+
+	Collector.report(reg_time(0),"test_0")
+	Collector.report(reg_time(1),"test_1")
+	class Test()extends Module{
+		val io	= IO(new Bundle{
+			val in	= Input(UInt(32.W))
+			val out = Output(UInt(32.W))
+		})
+
+		io.out	:= io.in+13.U
+
+		Collector.report(io.out, "tests")
+	}
 }

@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import common._
 import common.storage.XAXIConverter
+import common.storage.XQueue
 import hbm._
 import qdma.QDMAPin
 import qdma.QDMA
@@ -12,20 +13,31 @@ import qdma.AXIB
 import qdma.H2C
 import qdma.H2CLatency
 import qdma.C2HLatency
+import roce.ROCE_IP
+import cmac.XCMAC
+import cmac.CMACPin
+import common.storage.RegSlice
+import common.storage.XConverter
+import common.storage.XQueueConfig
 
 class RPSTop extends RawModule {
 	val qdma_pin		= IO(new QDMAPin())
+	val cmac_pin		= IO(new CMACPin)
 	val sysClkP			= IO(Input(Clock()))
 	val sysClkN			= IO(Input(Clock()))
 	val led		        = IO(Output(UInt(1.W)))
 
 	led         		:= 0.U
+
+	def TODO_32			= 32
 	
 	val mmcmTop	= Module(new MMCME4_ADV_Wrapper(
 		CLKFBOUT_MULT_F 		= 12,
 		MMCM_DIVCLK_DIVIDE		= 1,
 		MMCM_CLKOUT0_DIVIDE_F	= 12,
 		MMCM_CLKOUT1_DIVIDE_F	= 4,
+		MMCM_CLKOUT2_DIVIDE_F	= 12,
+		MMCM_CLKOUT3_DIVIDE_F	= 5,
 		MMCM_CLKIN1_PERIOD 		= 10
 	))
 
@@ -34,6 +46,8 @@ class RPSTop extends RawModule {
 
 	val clk_hbm_driver	= mmcmTop.io.CLKOUT0 //100M
 	val userClk			= mmcmTop.io.CLKOUT1 //300M
+	val cmacClk			= mmcmTop.io.CLKOUT2 //100M
+	val netClk			= mmcmTop.io.CLKOUT3 //240M
 
 	//HBM
     val hbmDriver 		= withClockAndReset(clk_hbm_driver, false.B) {Module(new HBM_DRIVER(WITH_RAMA=false))}
@@ -42,6 +56,7 @@ class RPSTop extends RawModule {
 	val hbmRstn     	= withClockAndReset(hbmClk,false.B) {RegNext(hbmDriver.io.hbm_rstn.asBool)}
     
 	val userRstn		= withClockAndReset(userClk,false.B) {ShiftRegister(hbmRstn,4)}
+	val netRstn			= withClockAndReset(netClk,false.B) {ShiftRegister(hbmRstn,4)}
 
 	for (i <- 0 until 32) {
 		hbmDriver.io.axi_hbm(i).hbm_init()	// Read hbm_init function if you're not familiar with AXI.
@@ -66,35 +81,74 @@ class RPSTop extends RawModule {
 	qdma.io.user_arstn	:= userRstn
 	qdma.io.soft_rstn	:= 1.U
 
-
 	val control_reg = qdma.io.reg_control
 	val status_reg = qdma.io.reg_status
 
 	val sw_reset	= control_reg(106) === 1.U
 
+	val cmac			= Module(new XCMAC)
+	cmac.getTCL()
+	cmac.io.pin			<> cmac_pin
+	cmac.io.drp_clk		<> cmacClk
+	cmac.io.user_clk	<> netClk
+	cmac.io.user_arstn	<> netRstn
+	cmac.io.sys_reset	<> !netRstn
+
+	XQueueConfig.Debug	= true
+	val roce								= withClockAndReset(netClk, sw_reset || !netRstn){Module(new ROCE_IP)}
+	XQueueConfig.Debug	= false
+
+	cmac.io.s_net_tx 						<> withClockAndReset(netClk, sw_reset || !netRstn){RegSlice(XQueue(roce.io.m_net_tx_data, TODO_32))}
+	roce.io.s_net_rx_data					<> withClockAndReset(netClk, sw_reset || !netRstn){RegSlice(XQueue(cmac.io.m_net_rx, TODO_32))}
+	roce.io.m_mem_read_cmd.ready			:= 1.U
+	roce.io.m_mem_write_cmd.ready			:= 1.U
+	roce.io.m_mem_write_data.ready			:= 1.U
+	roce.io.s_mem_read_data.valid			:= 0.U
+	roce.io.m_cmpt_meta.ready				:= 1.U
+	ToZero(roce.io.s_mem_read_data.bits)
+	ToZero(roce.io.qp_init.bits)
+
+	roce.io.qp_init.bits.remote_udp_port	:= 17.U	
+	roce.io.qp_init.bits.credit				:= 1600.U	
+
+	withClockAndReset(netClk, sw_reset || !netRstn){
+		val start							= control_reg(107) === 1.U
+		val risingStartInit					= start && RegNext(!start)
+		val valid 							= RegInit(UInt(1.W),0.U)
+		when(risingStartInit){
+			valid							:= 1.U
+		}.elsewhen(roce.io.qp_init.fire()){
+			valid							:= 0.U
+		}
+		roce.io.qp_init.valid				:= valid
+		roce.io.qp_init.bits.qpn			:= control_reg(108)
+		roce.io.qp_init.bits.local_psn		:= control_reg(109)
+		roce.io.qp_init.bits.remote_psn		:= control_reg(110)
+		roce.io.qp_init.bits.remote_qpn		:= control_reg(111)
+		roce.io.qp_init.bits.remote_ip		:= control_reg(112)
+
+		roce.io.local_ip_address			:= control_reg(113)//0x01bda8c0 01/189/168/192
+	}
+
 	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BenchNetSim(4,12))}
 
-	hbmDriver.io.axi_hbm(0) <> XAXIConverter(bench.io.axi_hbm(0), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(1) <> XAXIConverter(bench.io.axi_hbm(1), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(2) <> XAXIConverter(bench.io.axi_hbm(2), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(3) <> XAXIConverter(bench.io.axi_hbm(3), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(16) <> XAXIConverter(bench.io.axi_hbm(0), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(17) <> XAXIConverter(bench.io.axi_hbm(1), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(18) <> XAXIConverter(bench.io.axi_hbm(2), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(19) <> XAXIConverter(bench.io.axi_hbm(3), userClk, userRstn, hbmClk, hbmRstn)
 
 	bench.io.start_addr			:= Cat(control_reg(100), control_reg(101))
 	bench.io.num_rpcs			:= control_reg(102)
 	bench.io.pfch_tag			:= control_reg(103)
 	bench.io.tag_index			:= control_reg(104)
-	bench.io.start				:= control_reg(105)
 	bench.io.c2h_cmd			<> qdma.io.c2h_cmd
 	bench.io.c2h_data			<> qdma.io.c2h_data
 	bench.io.h2c_cmd			<> qdma.io.h2c_cmd
 	bench.io.h2c_data			<> qdma.io.h2c_data
 	bench.io.axib 				<> XAXIConverter(qdma.io.axib, qdma.io.pcie_clk, qdma.io.pcie_arstn, qdma.io.user_clk, qdma.io.user_arstn)
-
-	for(i<-0 until RPSConter.MAX_NUM){
-		status_reg(100+i) 		:= bench.io.counters(i)
-	}
-
-	for(i<-0 until RPSReporter.MAX_NUM){
-		status_reg(100+RPSConter.MAX_NUM+i) 		:= bench.io.reports(i)
-	}
+	bench.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn,userClk)
+	bench.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn,userClk)
+	roce.io.s_tx_meta			<> XConverter(bench.io.send_meta,userClk,userRstn,netClk)
+	roce.io.s_send_data			<> XConverter(bench.io.send_data,userClk,userRstn,netClk)
+	Collector.connect_to_status_reg(status_reg,100)
 }

@@ -14,9 +14,9 @@ object elaborate extends App {
 
 	args(0) match{
 		case "RPSTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSTop()),dir))
+		case "RPSClientTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSClientTop()),dir))
 		case "CompressorHBM" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new CompressorHBM()),dir))
 		case "HBMCompress" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new HBMCompress(4,12)),dir))
-		case "RoceSim" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RoceSim()),dir))
 		case "ChannelWriter" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new ChannelWriter(1)),dir))
 		case "ClientReqHandler" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new ClientReqHandler(4,6)),dir))
 		case "CSReqHandler" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new CSReqHandler()),dir))

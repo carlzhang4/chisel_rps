@@ -21,55 +21,22 @@ import common.connection.SerialRouter
 import common.connection.SimpleRouter
 import common.XCounter
 import common.Reporter
+import roce.util.TX_META
+import roce.util.RECV_META
+import common.Collector
 
-object RPSConter extends XCounter("RPS"){
-	override def MAX_NUM = 64
-} 
 
-object RPSReporter extends Reporter("RPS"){
-	override def MAX_NUM = 64
-}
-//Roce interface
-object APP_OP_CODE extends ChiselEnum{
-  val APP_READ    = Value
-  val APP_WRITE  = Value
-  val APP_SEND  = Value
-  val reserve1  = Value//note that each  stateClientMeta must be declared, otherwise the cast will warn you
-}
 
-class TX_META()extends Bundle{
-    val rdma_cmd = APP_OP_CODE()
-    val qpn = UInt(24.W)
-    val local_vaddr = UInt(48.W)
-    val remote_vaddr = UInt(48.W)
-    val length = UInt(32.W)
-}
-
-class CMPT_META()extends Bundle{
-    val qpn         = UInt(16.W)
-    val msg_num     = UInt(24.W)  
-}
-
-class RECV_META()extends Bundle{
-    val qpn         = UInt(16.W)
-    val msg_num     = UInt(24.W) 
-    val pkg_num     = UInt(21.W) //2G\1K
-    val pkg_total   = UInt(21.W)
-}
-
-class RoceSim extends Module{
+class ClientAndChunckServer extends Module{
 	def TODO_32 		= 32
 	def TODO_256		= 256
-	def TOTAL_RPCS 		= 1024L*1024*1024
 	def MSG_BEATS		= 64 // 4K/64=64
 	val io = IO(new Bundle{
-		val send_meta	= Flipped(Decoupled(new TX_META))
-		val send_data	= Flipped(Decoupled(new AXIS(512)))
+		val send_meta	= Decoupled(new TX_META)
+		val send_data	= Decoupled(new AXIS(512))
 
-		val recv_meta	= Decoupled(new RECV_META)
-		val recv_data	= Decoupled(new AXIS(512))
-
-		// val cmpt_meta	= Decoupled(new CMPT_META)
+		val recv_meta	= Flipped(Decoupled(new RECV_META))
+		val recv_data	= Flipped(Decoupled(new AXIS(512)))
 
 		val start		= Input(UInt(1.W))
 		val num_rpcs	= Input(UInt(32.W))
@@ -78,32 +45,20 @@ class RoceSim extends Module{
 	/*
 		* arbiter 0 => client to bs
 		* arbiter 1 => cs to bs
-		* io.out => user
-		* in simlulation, arbiter receive TX_META, transform to RECV_META at out
+		* io.out => send to net
 	*/
 	val arbiter						= CompositeArbiter(new TX_META, AXIS(512), 2)
-	io.recv_meta.valid				:= arbiter.io.out_meta.valid
-	io.recv_meta.ready				<> arbiter.io.out_meta.ready
-	io.recv_meta.bits.qpn			:= arbiter.io.out_meta.bits.qpn
-	io.recv_meta.bits.pkg_total		:= 1.U
-	io.recv_meta.bits.pkg_num		:= 0.U//shoud be ok as mtu is larger than 4K
-	io.recv_meta.bits.msg_num		:= 0.U//todo, should be incremental when real
-	io.recv_data					<> arbiter.io.out_data
+	io.send_meta					<> arbiter.io.out_meta
+	io.send_data					<> arbiter.io.out_data
 
 	/*
-		* user => io.in
+		* recv from net => io.in
 		* router 0 => bs to client
 		* router 1 => bs to cs
-		* in simlulation, router receive RECV_META(transformed from TX_META) at in
 	*/
 	val router							= CompositeRouter(new RECV_META, AXIS(512), 2)
-	router.io.in_meta.valid				:= io.send_meta.valid
-	router.io.in_meta.ready				<> io.send_meta.ready
-	router.io.in_meta.bits.qpn			<> io.send_meta.bits.qpn
-	router.io.in_meta.bits.pkg_total	<> 1.U
-	router.io.in_meta.bits.pkg_num		<> 0.U
-	router.io.in_meta.bits.msg_num		<> 0.U
-	router.io.in_data					<> io.send_data
+	router.io.in_meta					<> io.recv_meta
+	router.io.in_data					<> io.recv_data
 	when(router.io.in_meta.bits.qpn === 1.U){
 		router.io.idx			:= 0.U//client
 	}.elsewhen(router.io.in_meta.bits.qpn === 2.U){
@@ -128,6 +83,12 @@ class RoceSim extends Module{
 	cs.io.send_data		<> arbiter.io.in_data(1)
 	cs.io.recv_meta		<> router.io.out_meta(1)
 	cs.io.recv_data		<> router.io.out_data(1)
+
+	Collector.fire(arbiter.io.out_meta)
+	Collector.fire(arbiter.io.out_data)
+	Collector.fire(router.io.in_meta)
+	Collector.fire(router.io.in_data)
+
 }
 class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 	val io = IO(new Bundle{
@@ -138,15 +99,17 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		val num_rpcs				= Input(UInt(32.W))
 		val pfch_tag				= Input(UInt(32.W))
 		val tag_index				= Input(UInt(32.W))
-		val start					= Input(UInt(32.W))
-
-		val counters 				= Vec(RPSConter.MAX_NUM, Output(UInt(32.W)))
-		val reports					= Vec(RPSReporter.MAX_NUM, Output(UInt(32.W)))
 
 		val c2h_cmd					= Decoupled(new C2H_CMD)
 		val c2h_data				= Decoupled(new C2H_DATA) 
 		val h2c_cmd					= Decoupled(new H2C_CMD)
 		val h2c_data				= Flipped(Decoupled(new H2C_DATA))
+
+		val send_meta				= Decoupled(new TX_META)
+		val send_data				= Decoupled(new AXIS(512))
+
+		val recv_meta				= Flipped(Decoupled(new RECV_META))
+		val recv_data				= Flipped(Decoupled(new AXIS(512)))
 	})
 
 	val qdma_control	= {
@@ -161,23 +124,18 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		t.io.start_addr	<> io.start_addr
 		t
 	}
-	
-	//generate flow
-	val net	= Module(new RoceSim)
-	net.io.start						:= io.start===1.U
-	net.io.num_rpcs						:= io.num_rpcs
 
 	val arbiter_net						= CompositeArbiter(new TX_META, AXIS(512), 2)
-	arbiter_net.io.out_meta				<> net.io.send_meta
-	arbiter_net.io.out_data				<> net.io.send_data
+	arbiter_net.io.out_meta				<> io.send_meta
+	arbiter_net.io.out_data				<> io.send_data
 	val send_meta_client				= arbiter_net.io.in_meta(0)
 	val send_data_client				= arbiter_net.io.in_data(0)
 	val send_meta_cs					= arbiter_net.io.in_meta(1)
 	val send_data_cs					= arbiter_net.io.in_data(1)
 
 	val router_net						= CompositeRouter(new RECV_META, AXIS(512), 2)
-	router_net.io.in_meta				<> net.io.recv_meta
-	router_net.io.in_data				<> net.io.recv_data
+	router_net.io.in_meta				<> io.recv_meta
+	router_net.io.in_data				<> io.recv_data
 	when(router_net.io.in_meta.bits.qpn === 1.U){
 		router_net.io.idx			:= 0.U//client
 	}.elsewhen(router_net.io.in_meta.bits.qpn === 2.U){
@@ -231,21 +189,5 @@ class BenchNetSim(NumChannels:Int=4, Factor:Int=12) extends Module{
 		router.io.out(0)				<> client_req_handler.io.meta_from_host
 		router.io.out(1)				<> cs_req_handler.io.meta_from_host
 	}
-
-	val counters		= Wire(Vec(RPSConter.MAX_NUM,UInt(32.W)))
-	for(i<- 0 until RPSConter.MAX_NUM){
-		counters(i)		:= 0.U
-		io.counters(i)	:= counters(i)
-	}
-	RPSConter.get_counters(counters)
-	RPSConter.print_msgs()
-
-	val reports			= Wire(Vec(RPSReporter.MAX_NUM,UInt(32.W)))
-	for(i<- 0 until RPSReporter.MAX_NUM){
-		reports(i)		:= 0.U
-		io.reports(i)	:= reports(i)
-	}
-	RPSReporter.get_reports(reports)
-	RPSReporter.print_msgs()
 	
 }

@@ -7,6 +7,10 @@ import common.storage.XQueue
 import common.storage.RegSlice
 import common.connection.Connection
 import common.ToAllOnes
+import roce.util.TX_META
+import roce.util.RECV_META
+import roce.util.APP_OP_CODE
+import common.Collector
 
 class ChunckServer extends Module{
 	def TODO_CS_CYCLES = 256
@@ -40,10 +44,10 @@ class ChunckServer extends Module{
 		reg_count					:= reg_count+1.U
 	}
 
-	RPSConter.record(io.send_meta.fire(), "CS_SendMetaFire")
-	RPSConter.record(io.send_data.fire(), "CS_SendDataFire")
-	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "CS_SendDataLast")
-	RPSConter.record(io.recv_meta.fire(), "CS_RecvMetaFire")
-	RPSConter.record(io.recv_data.fire(), "CS_RecvDataFire")
-	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "CS_RecvDataLast")
+	Collector.fire(io.send_meta)
+	Collector.fire(io.send_data)
+	Collector.fireLast(io.send_data)
+	Collector.fire(io.recv_meta)
+	Collector.fire(io.recv_data)
+	Collector.fireLast(io.recv_data)
 }

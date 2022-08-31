@@ -10,6 +10,10 @@ import common.storage.XQueue
 import common.connection.CompositeRouter
 import common.ToAllOnes
 import common.connection.Connection
+import roce.util.TX_META
+import roce.util.RECV_META
+import roce.util.APP_OP_CODE
+import common.Collector
 
 class ChannelWriter(index:Int) extends Module{
 	def TODO_32 = 32
@@ -216,14 +220,14 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 		}
 	}
 
-	RPSConter.record(io.recv_meta.fire(), "ClientReqHandler_RecvMetaFire")
-	RPSConter.record(io.recv_data.fire(), "ClientReqHandler_RecvDataFire")
-	RPSConter.record(io.recv_data.fire()&io.recv_data.bits.last.asBool(), "ClientReqHandler_RecvDataLast")
-	RPSConter.record(io.meta2host.fire(), "ClientReqHandler_Meta2HostFire")
-	RPSConter.record(io.data2host.fire(), "ClientReqHandler_Data2HostFire")
-	RPSConter.record(io.data2host.fire()&io.data2host.bits.last.asBool(), "ClientReqHandler_Data2HostLast")
-	RPSConter.record(io.meta_from_host.fire(), "ClientReqHandler_MetaFromHostFire")
-	RPSConter.record(io.send_meta.fire(), "ClientReqHandler_SendMetaFire")
-	RPSConter.record(io.send_data.fire(), "ClientReqHandler_SendDataFire")
-	RPSConter.record(io.send_data.fire()&io.send_data.bits.last.asBool(), "ClientReqHandler_SendDataLast")
+	Collector.fire(io.recv_meta)
+	Collector.fire(io.recv_data)
+	Collector.fireLast(io.recv_data)
+	Collector.fire(io.meta2host)
+	Collector.fire(io.data2host)
+	Collector.fireLast(io.data2host)
+	Collector.fire(io.meta_from_host)
+	Collector.fire(io.send_meta)
+	Collector.fire(io.send_data)
+	Collector.fireLast(io.send_data)
 }

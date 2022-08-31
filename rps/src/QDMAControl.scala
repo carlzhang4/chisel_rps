@@ -11,6 +11,7 @@ import common.ToZero
 import common.storage.XQueue
 import common.connection.SimpleRouter
 import common.connection.Connection
+import common.Collector
 
 class QDMAControl extends Module{
 	val NUM_Q = 4
@@ -66,7 +67,7 @@ class QDMAControl extends Module{
 		when(reg_cur > reg_max){
 			reg_max			:= reg_cur
 		}
-		RPSReporter.report(reg_max,"QDMAControl::reg_max")
+		Collector.report(reg_max)
 	}
 
 	//h2c is useless
@@ -98,6 +99,6 @@ class QDMAControl extends Module{
 		io.c2h_data.bits.last		<> io.data2host.bits.last
 
 	}
-	RPSConter.record(io.axi.aw.fire(), "QDMAControl::aw_fire")
-	RPSConter.record(io.axi.w.fire(), "QDMAControl::w_fire")
+	Collector.fire(io.axi.aw)
+	Collector.fire(io.axi.w)
 }
