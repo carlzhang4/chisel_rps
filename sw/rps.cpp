@@ -4,13 +4,16 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <gflags/gflags.h>
 #include "src/util.hpp"
 #include "src/debug.hpp"
+
+DEFINE_string(type, "none", "node type");
 
 using namespace std;
 std::mutex IO_LOCK;
 
-uint32_t num_rpcs = 16*1024*1024;//1024*1024;
+uint32_t num_rpcs = 1024*1024*16;//16*1024*1024;//1024*1024;
 
 #define HOST_MEM_PARTITION (1L*1024*1024*1024)
 #define CS_HOST_MEM_OFFSET (1L*1024*1024*1024)
@@ -84,8 +87,36 @@ void sub_task_cs_req(int thread_index, __m512i* bridge, uint32_t num_rpcs, size_
 	}
 }
 
-int main(){
-    unsigned char pci_bus = 0x3d;
+void run_client(){
+	unsigned char pci_bus = 0x1a;
+	init(pci_bus);
+	volatile uint32_t * bar = (volatile uint32_t*)getLiteAddr(pci_bus);
+
+	bar[103] = 0;
+	bar[100] = 1;
+	sleep(1);
+	bar[100] = 0;//reset
+	sleep(1);
+
+	//qp_init start
+	bar[101] = 0;
+	bar[101] = 1;
+	sleep(1);
+	bar[101] = 0;
+	bar[101] = 1;
+
+	sleep(1);
+	bar[101] = 0;
+	bar[102] = num_rpcs;
+	
+	bar[103] = 1;//start
+	sleep(1);
+	bar[103] = 0;
+	print_reporters_client(bar);
+}
+
+void run_bs(){
+	unsigned char pci_bus = 0x1a;
     size_t size = 2L*1024*1024*1024;
 
     init(pci_bus);
@@ -110,13 +141,33 @@ int main(){
 	// print_reporters(bar);
 	// exit(1);
 
-    bar[105] = 0;//start
+	bar[107] = 0;//start qp_init
 	bar[106] = 1;//reset
+	sleep(1);
 	bar[106] = 0;
+	sleep(1);
 
     bar[100] = (uint32_t)((unsigned long)p>>32);
 	bar[101] = (uint32_t)((unsigned long)p);
-    bar[102] = num_rpcs;
+
+	bar[112] = (uint32_t)0x01bda8c0; //remote ip: 192.168.189.1
+	bar[113] = (uint32_t)0x02bda8c0; //local ip: 192.168.189.2 (02/189/168/192)
+
+	bar[108] = (uint32_t)1;//local qpn
+	bar[109] = (uint32_t)0x2001;//local psn
+	bar[110] = (uint32_t)0x1001;//remote psn
+	bar[111] = (uint32_t)1;//remote qpn
+	bar[107] = 1;
+
+	sleep(1);
+
+	bar[107] = 0;
+	bar[108] = (uint32_t)2;//local qpn
+	bar[109] = (uint32_t)0x2002;//local psn
+	bar[110] = (uint32_t)0x1002;//remote psn
+	bar[111] = (uint32_t)2;//remote qpn
+	bar[107] = 1;
+	
 
 	vector<thread> threads(2);
 	//client req handler
@@ -127,33 +178,24 @@ int main(){
 	threads[1] = thread(sub_task_cs_req, 2, bridge, num_rpcs, cs_buffer);
 	set_cpu(threads[1], 2);
 
-	
-	int x;
-	cout<<"Enter a number to start:"<<endl;
-	cin>>x;
-	cout<<x<<endl;
-	sleep(1);
-    bar[105] = 1;//start
-
 	for(int i=0;i<2;i++){
 		threads[i].join();
 	}
 
-    print_reporters(bar);
-    // printCounters(pci_bus);
+    print_reporters_bs(bar);
+    printCounters(pci_bus);
 
-	uint64_t latency = 0;
-	latency = bar[512+100+64+4] + ((1l*bar[512+100+64+3])<<32);
-
-	uint64_t time = 0;
-	time = bar[512+100+64+2] + ((1l*bar[512+100+64+1])<<32);
-
-	printf("latency: %ld\n",latency);
-	printf("average latency: %f us \n",1.0*latency*(3.3/1000)/num_rpcs);
-	printf("reg_time: %ld\n",time);
-
-	double speed = 1.0 * num_rpcs * 4096 / 1024/1024/1024 / (3.3/1000/1000/1000 * time);
-	printf("speed: %f GB/s\n",speed);
-
+}
+int main(int argc, char** argv){
+	gflags::ParseCommandLineFlags(&argc, &argv, true);
+	if(FLAGS_type.compare("client") == 0){
+		cout<<"Client start:"<<endl;
+		run_client();
+	}else if(FLAGS_type.compare("bs") == 0){
+		cout<<"BS start"<<endl;	
+		run_bs();
+	}else{
+		cout<<"Invalid type"<<endl;
+	}    
     return 0;
 }

@@ -18,6 +18,7 @@ target_link_libraries(rps
 	qdma
 	pthread
 	numa
+	gflags
 )
 
 add_executable(check_status
@@ -28,4 +29,5 @@ add_executable(check_status
 target_link_libraries(check_status
 	qdma
 	pthread
+	gflags
 )
