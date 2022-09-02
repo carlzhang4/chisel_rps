@@ -19,6 +19,7 @@ import cmac.CMACPin
 import common.storage.RegSlice
 import common.storage.XConverter
 import common.storage.XQueueConfig
+import common.storage.AXIRegSlice
 
 class RPSTop extends RawModule {
 	val qdma_pin		= IO(new QDMAPin())
@@ -84,7 +85,7 @@ class RPSTop extends RawModule {
 	val control_reg = qdma.io.reg_control
 	val status_reg = qdma.io.reg_status
 
-	val sw_reset	= control_reg(106) === 1.U
+	val sw_reset	= control_reg(100) === 1.U
 
 	val cmac			= Module(new XCMAC)
 	cmac.getTCL()
@@ -94,9 +95,7 @@ class RPSTop extends RawModule {
 	cmac.io.user_arstn	<> netRstn
 	cmac.io.sys_reset	<> !netRstn
 
-	XQueueConfig.Debug	= true
 	val roce								= withClockAndReset(netClk, sw_reset || !netRstn){Module(new ROCE_IP)}
-	XQueueConfig.Debug	= false
 
 	cmac.io.s_net_tx 						<> withClockAndReset(netClk, sw_reset || !netRstn){RegSlice(XQueue(roce.io.m_net_tx_data, TODO_32))}
 	roce.io.s_net_rx_data					<> withClockAndReset(netClk, sw_reset || !netRstn){RegSlice(XQueue(cmac.io.m_net_rx, TODO_32))}
@@ -112,35 +111,47 @@ class RPSTop extends RawModule {
 	roce.io.qp_init.bits.credit				:= 1600.U	
 
 	withClockAndReset(netClk, sw_reset || !netRstn){
-		val start							= control_reg(107) === 1.U
+		val start 							= RegNext(control_reg(101) === 1.U)
 		val risingStartInit					= start && RegNext(!start)
 		val valid 							= RegInit(UInt(1.W),0.U)
-		when(risingStartInit){
+		when(risingStartInit === 1.U){
 			valid							:= 1.U
 		}.elsewhen(roce.io.qp_init.fire()){
 			valid							:= 0.U
 		}
 		roce.io.qp_init.valid				:= valid
-		roce.io.qp_init.bits.qpn			:= control_reg(108)
-		roce.io.qp_init.bits.local_psn		:= control_reg(109)
-		roce.io.qp_init.bits.remote_psn		:= control_reg(110)
-		roce.io.qp_init.bits.remote_qpn		:= control_reg(111)
-		roce.io.qp_init.bits.remote_ip		:= control_reg(112)
+		roce.io.qp_init.bits.remote_ip		:= 0x01bda8c0.U
+		roce.io.local_ip_address			:= 0x02bda8c0.U//0x01bda8c0 01/189/168/192
 
-		roce.io.local_ip_address			:= control_reg(113)//0x01bda8c0 01/189/168/192
+		val cur_qp							= RegInit(UInt(1.W),0.U)
+		when(roce.io.qp_init.fire()){
+			cur_qp							:= cur_qp + 1.U
+		}
+
+		when(cur_qp === 0.U){
+			roce.io.qp_init.bits.qpn			:= 1.U
+			roce.io.qp_init.bits.remote_qpn		:= 1.U
+			roce.io.qp_init.bits.local_psn		:= 0x2001.U
+			roce.io.qp_init.bits.remote_psn		:= 0x1001.U
+		}.otherwise{
+			roce.io.qp_init.bits.qpn			:= 2.U
+			roce.io.qp_init.bits.remote_qpn		:= 2.U
+			roce.io.qp_init.bits.local_psn		:= 0x2002.U
+			roce.io.qp_init.bits.remote_psn		:= 0x1002.U
+		}
 	}
 
-	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BenchNetSim(4,12))}
+	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BlockServer(4,12))}
 
-	hbmDriver.io.axi_hbm(16) <> XAXIConverter(bench.io.axi_hbm(0), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(17) <> XAXIConverter(bench.io.axi_hbm(1), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(18) <> XAXIConverter(bench.io.axi_hbm(2), userClk, userRstn, hbmClk, hbmRstn)
-	hbmDriver.io.axi_hbm(19) <> XAXIConverter(bench.io.axi_hbm(3), userClk, userRstn, hbmClk, hbmRstn)
+	hbmDriver.io.axi_hbm(16) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(0), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(17) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(1), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(18) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(2), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(19) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(3), userClk, userRstn, hbmClk, hbmRstn))}
 
-	bench.io.start_addr			:= Cat(control_reg(100), control_reg(101))
-	bench.io.num_rpcs			:= control_reg(102)
-	bench.io.pfch_tag			:= control_reg(103)
-	bench.io.tag_index			:= control_reg(104)
+	bench.io.start_addr			:= Cat(control_reg(110), control_reg(111))
+	bench.io.num_rpcs			:= control_reg(112)
+	bench.io.pfch_tag			:= control_reg(113)
+	bench.io.tag_index			:= control_reg(114)
 	bench.io.c2h_cmd			<> qdma.io.c2h_cmd
 	bench.io.c2h_data			<> qdma.io.c2h_data
 	bench.io.h2c_cmd			<> qdma.io.h2c_cmd

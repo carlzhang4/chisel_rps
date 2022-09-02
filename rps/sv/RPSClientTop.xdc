@@ -24,7 +24,6 @@ set_property PACKAGE_PIN AR15 [get_ports qdma_pin_sys_clk_p]
 set_false_path -from [get_cells -regexp {qdma/axil2reg/reg_control_[0-9]*_reg\[.*]}]
 set_false_path -to [get_cells -regexp {qdma/axil2reg/reg_status_[0-9]*_reg\[.*]}]
 set_false_path -to [get_pins -hier {*sync_reg[0]/D}]
-set_false_path -to [get_cells qdma/reports_*_reg]
 
 #cmac
 set_false_path -from [get_clocks -of_objects [get_pins -hier -filter {NAME =~ */gtye4_channel_gen.gen_gtye4_channel_inst[*].GTYE4_CHANNEL_PRIM_INST/RXOUTCLK}]] -to [get_clocks -of_objects [get_pins -hier -filter {NAME =~ */gtye4_channel_gen.gen_gtye4_channel_inst[*].GTYE4_CHANNEL_PRIM_INST/TXOUTCLK}]]
@@ -34,7 +33,7 @@ add_cells_to_pblock [get_pblocks pblock_qdma] [get_cells -quiet [list qdma]]
 resize_pblock [get_pblocks pblock_qdma] -add {SLR0}
 
 create_pblock pblock_roce
-resize_pblock [get_pblocks pblock_roce] -add {SLR0:SLR1}
+resize_pblock [get_pblocks pblock_roce] -add {SLR1:SLR1}
 add_cells_to_pblock pblock_roce [get_cells [list roce]]
 
 create_pblock pblock_cmac

@@ -20,7 +20,6 @@ object elaborate extends App {
 		case "ChannelWriter" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new ChannelWriter(1)),dir))
 		case "ClientReqHandler" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new ClientReqHandler(4,6)),dir))
 		case "CSReqHandler" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new CSReqHandler()),dir))
-		case "BenchNetSim" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new BenchNetSim()),dir))
 		case _ => println("Module match failed!")
 	}
 }

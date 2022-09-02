@@ -14,6 +14,7 @@ import roce.util.TX_META
 import roce.util.RECV_META
 import roce.util.APP_OP_CODE
 import common.Collector
+import common.Timer
 
 class ChannelWriter(index:Int) extends Module{
 	def TODO_32 = 32
@@ -126,6 +127,10 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 		val send_meta		= Decoupled(new TX_META)
 		val send_data		= Decoupled(AXIS(512))
 	})
+
+	val client_req_qdma_latency = Timer(io.meta2host.fire(), io.meta_from_host.fire()).latency
+
+	Collector.report(client_req_qdma_latency,fix_str = "REG_CLIENT_REQ_QDMA_LATENCY")
 
 	for(i<-0 until NumChannels){
 		io.axi_hbm(i).hbm_init()

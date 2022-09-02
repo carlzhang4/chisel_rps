@@ -36,7 +36,6 @@ set_property LOC [get_package_pins -of_objects [get_bels [get_sites -filter {NAM
 set_false_path -from [get_cells -regexp {qdma/axil2reg/reg_control_[0-9]*_reg\[.*]}]
 set_false_path -to [get_cells -regexp {qdma/axil2reg/reg_status_[0-9]*_reg\[.*]}]
 set_false_path -to [get_pins -hier *sync_reg[0]/D]
-set_false_path -to [get_cells qdma/reports_*_reg]
 
 #cmac
 set_false_path -from [get_clocks -of_objects [get_pins -hier -filter {NAME =~ */gtye4_channel_gen.gen_gtye4_channel_inst[*].GTYE4_CHANNEL_PRIM_INST/RXOUTCLK}]] -to [get_clocks -of_objects [get_pins -hier -filter {NAME =~ */gtye4_channel_gen.gen_gtye4_channel_inst[*].GTYE4_CHANNEL_PRIM_INST/TXOUTCLK}]]
@@ -46,8 +45,9 @@ resize_pblock pblock_qdma -add SLR0:SLR0
 add_cells_to_pblock pblock_qdma [get_cells [list qdma]]
 
 create_pblock pblock_roce
-resize_pblock pblock_roce -add SLR0:SLR1
+resize_pblock pblock_roce -add SLR1:SLR1
 add_cells_to_pblock pblock_roce [get_cells [list roce]]
+add_cells_to_pblock pblock_roce [get_cells [list bench]]
 
 create_pblock pblock_cmac
 resize_pblock pblock_cmac -add SLR2:SLR2

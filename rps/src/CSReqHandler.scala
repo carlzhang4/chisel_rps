@@ -14,6 +14,7 @@ import roce.util.TX_META
 import roce.util.RECV_META
 import roce.util.APP_OP_CODE
 import common.Collector
+import common.Timer
 
 class CSReqHandler extends Module{
 	def TODO_32 = 32
@@ -31,6 +32,9 @@ class CSReqHandler extends Module{
 		val send_data		= Decoupled(AXIS(512))
 	})
 	io.recv_data.ready		:= 1.U//not used
+
+	val cs_req_qdma_latency = Timer(io.meta2host.fire(), io.meta_from_host.fire()).latency
+	Collector.report(cs_req_qdma_latency,fix_str = "REG_CS_REQ_QDMA_LATENCY")
 
 	val q_2host_meta						= XQueue(new Meta2Host, TODO_32)
 	val q_2host_data						= XQueue(new Data2Host, TODO_32)

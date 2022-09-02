@@ -12,6 +12,7 @@ import common.storage.XQueue
 import common.connection.SimpleRouter
 import common.connection.Connection
 import common.Collector
+import common.Timer
 
 class QDMAControl extends Module{
 	val NUM_Q = 4
@@ -101,4 +102,13 @@ class QDMAControl extends Module{
 	}
 	Collector.fire(io.axi.aw)
 	Collector.fire(io.axi.w)
+
+	val qdma_timer = Timer(io.c2h_cmd.fire(), io.axi.aw.fire())
+	val qdma_latency = qdma_timer.latency
+	val qdma_latency_start_cnt = qdma_timer.cnt_start
+	val qdma_latency_end_cnt = qdma_timer.cnt_end
+
+	Collector.report(qdma_latency,fix_str = "REG_QDMA_LATENCY")
+	Collector.report(qdma_latency_start_cnt)
+	Collector.report(qdma_latency_end_cnt)
 }

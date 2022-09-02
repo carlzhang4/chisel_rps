@@ -98,11 +98,8 @@ class RPSClientTop extends RawModule{
 	roce.io.qp_init.bits.credit				:= 1600.U
 
 	withClockAndReset(netClk, !netRstn){
-		val start 							= RegInit(UInt(1.W),0.U)
-		start								:= control_reg(101)(0)
-
-		val risingStartInit					= RegInit(UInt(1.W),0.U)
-		risingStartInit						:= start===1.U && RegNext(!start)
+		val start 							= RegNext(control_reg(101) === 1.U)
+		val risingStartInit					= start && RegNext(!start)
 		val valid 							= RegInit(UInt(1.W),0.U)
 		when(risingStartInit === 1.U){
 			valid							:= 1.U
@@ -153,9 +150,10 @@ class RPSClientTop extends RawModule{
 	roce.io.s_tx_meta					<> XConverter(clientAndCS.io.send_meta,userClk,userRstn,netClk)
 	roce.io.s_send_data					<> XConverter(clientAndCS.io.send_data,userClk,userRstn,netClk)
 	withClockAndReset(userClk, !userRstn){
-		val num_rpcs					= control_reg(102)
-		val start						= control_reg(103) === 1.U
-		clientAndCS.io.num_rpcs			:= num_rpcs
+		val start						= control_reg(102) === 1.U
+		clientAndCS.io.num_rpcs			:= control_reg(110)
+		clientAndCS.io.en_cycles		:= control_reg(111)
+		clientAndCS.io.total_cycles		:= control_reg(112)
 		clientAndCS.io.start			:= start
 	}
 	Collector.connect_to_status_reg(status_reg,100)
