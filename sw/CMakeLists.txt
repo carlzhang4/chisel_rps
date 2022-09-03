@@ -4,6 +4,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 project(rps LANGUAGES CXX VERSION 0.1)
 
+file(READ gen/RPSDummyTop.print RPSDummyTop_print)
+file(READ gen/RPSTop.print RPSTop_print)
+file(READ gen/RPSClientTop.print RPSClientTop_print)
+
+file(READ gen/RPSDummyTop.fix RPSDummyTop_fix)
+file(READ gen/RPSTop.fix RPSTop_fix)
+file(READ gen/RPSClientTop.fix RPSClientTop_fix)
+
+configure_file (gen.h.in gen.h)
+
 add_definitions(-mavx512f)
 add_compile_options(-O3 -g -march=native)
 

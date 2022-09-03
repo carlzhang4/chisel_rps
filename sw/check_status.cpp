@@ -1,7 +1,7 @@
 #include <QDMAController.h>
 #include <unistd.h>
 #include <gflags/gflags.h>
-#include "src/debug.hpp"
+#include "build/gen.h"
 
 DEFINE_string(type, "none", "node type");
 
@@ -17,6 +17,10 @@ int main(int argc, char** argv){
 	}else if(FLAGS_type.compare("bs") == 0){
 		cout<<"BS Check Status"<<endl;	
 		print_reporters_bs(bar);
+	}else if(FLAGS_type.compare("dummy") == 0){
+		cout<<"Dummy Check Status"<<endl;	
+		printCounters(pci_bus);
+		print_reporters_dummy(bar);
 	}else{
 		cout<<"Invalid type"<<endl;
 	}    

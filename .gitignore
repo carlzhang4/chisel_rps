@@ -4,4 +4,6 @@
 /.metals
 /.vscode
 */build
+*/.vscode
+*/gen
 config.json
