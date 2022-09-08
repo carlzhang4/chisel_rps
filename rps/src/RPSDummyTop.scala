@@ -2,26 +2,26 @@ package rps
 
 import chisel3._
 import chisel3.util._
-import common.MMCME4_ADV_Wrapper
-import common.IBUFDS
-import cmac.CMACPin
-import cmac.XCMAC
-import roce.ROCE_IP
-import common.ToZero
-import common.storage.RegSlice
+import common._
+import common.storage.XAXIConverter
 import common.storage.XQueue
-import common.storage.XConverter
-import common.BaseVIO
-import qdma.QDMA
+import hbm._
 import qdma.QDMAPin
-import common.BaseILA
-import java.text.Collator
-import common.Collector
+import qdma.QDMA
+import qdma.SimpleAXISlave
+import qdma.AXIB
+import qdma.H2C
+import qdma.H2CLatency
+import qdma.C2HLatency
+import roce.ROCE_IP
+import cmac.XCMAC
+import cmac.CMACPin
+import common.storage.RegSlice
+import common.storage.XConverter
+import common.storage.XQueueConfig
+import common.storage.AXIRegSlice
 
-
-class RPSClientTop extends RawModule{
-	def TODO_32			= 32
-
+class RPSDummyTop extends RawModule {
 	val qdma_pin		= IO(new QDMAPin())
 	val cmac_pin		= IO(new CMACPin)
 	val sysClkP			= IO(Input(Clock()))
@@ -30,41 +30,36 @@ class RPSClientTop extends RawModule{
 
 	led         		:= 0.U
 
+	def TODO_32			= 32
+	
 	val mmcmTop	= Module(new MMCME4_ADV_Wrapper(
 		CLKFBOUT_MULT_F 		= 12,
 		MMCM_DIVCLK_DIVIDE		= 1,
 		MMCM_CLKOUT0_DIVIDE_F	= 12,
 		MMCM_CLKOUT1_DIVIDE_F	= 4,
-		MMCM_CLKOUT2_DIVIDE_F	= 5,
-		MMCM_CLKIN1_PERIOD 		= 10,
+		MMCM_CLKOUT2_DIVIDE_F	= 12,
+		MMCM_CLKOUT3_DIVIDE_F	= 5,
+		MMCM_CLKIN1_PERIOD 		= 10
 	))
 
 	mmcmTop.io.CLKIN1	:= IBUFDS(sysClkP,sysClkN)
 	mmcmTop.io.RST		:= 0.U
 
-	val cmacClk			= mmcmTop.io.CLKOUT0 //100M
 	val userClk			= mmcmTop.io.CLKOUT1 //300M
-	val netClk 			= mmcmTop.io.CLKOUT2 //240M
+	val cmacClk			= mmcmTop.io.CLKOUT2 //100M
+	val netClk			= mmcmTop.io.CLKOUT3 //240M
 
 	val cmac			= Module(new XCMAC)
 
-	val sw_reset		= Wire(Bool())//todo
+	val sw_reset		= Wire(Bool())
 	val netRstn			= withClockAndReset(netClk,false.B) {RegNext(cmac.io.net_rstn)}
 	val userRstn		= withClockAndReset(userClk,false.B) {ShiftRegister(netRstn,4)}
-	//do not add sw_reset into Rstn, otherwise sw_reset after QDMA initiation would reset QDMA's TLB
 
+	//QDMA
 	val qdma 			= Module(new QDMA("202101"))
 	qdma.getTCL()
 	ToZero(qdma.io.reg_status)
-	ToZero(qdma.io.c2h_data.bits)
-	ToZero(qdma.io.h2c_cmd.bits)
-	ToZero(qdma.io.c2h_cmd.bits)
-	qdma.io.h2c_data.ready	:= 0.U
-	qdma.io.c2h_data.valid	:= 0.U
-	qdma.io.h2c_cmd.valid	:= 0.U
-	qdma.io.c2h_cmd.valid	:= 0.U
-	qdma.io.axib.slave_init()
-
+	
 	qdma.io.pin <> qdma_pin
 	qdma.io.user_clk	:= userClk
 	qdma.io.user_arstn	:= userRstn
@@ -73,8 +68,9 @@ class RPSClientTop extends RawModule{
 	val control_reg = qdma.io.reg_control
 	val status_reg = qdma.io.reg_status
 
-	sw_reset			:= control_reg(100) === 1.U
+	sw_reset	:= control_reg(100) === 1.U
 
+	
 	cmac.getTCL()
 	cmac.io.pin			<> cmac_pin
 	cmac.io.drp_clk		<> cmacClk
@@ -82,9 +78,8 @@ class RPSClientTop extends RawModule{
 	cmac.io.user_arstn	<> netRstn
 	cmac.io.sys_reset	<> !mmcmTop.io.LOCKED
 
-	
+	val roce								= withClockAndReset(netClk, sw_reset || !netRstn){Module(new ROCE_IP)}
 
-	val roce:ROCE_IP						= withClockAndReset(netClk, sw_reset || !netRstn){Module(new ROCE_IP)}
 	cmac.io.s_net_tx 						<> withClockAndReset(netClk, sw_reset || !netRstn){RegSlice(XQueue(roce.io.m_net_tx_data, TODO_32))}
 	roce.io.s_net_rx_data					<> withClockAndReset(netClk, sw_reset || !netRstn){RegSlice(XQueue(cmac.io.m_net_rx, TODO_32))}
 	roce.io.m_mem_read_cmd.ready			:= 1.U
@@ -96,6 +91,7 @@ class RPSClientTop extends RawModule{
 	ToZero(roce.io.qp_init.bits)
 
 	roce.io.qp_init.bits.remote_udp_port	:= 17.U	
+		
 
 	withClockAndReset(netClk, sw_reset || !netRstn){
 		val start 							= RegNext(control_reg(101) === 1.U)
@@ -107,9 +103,8 @@ class RPSClientTop extends RawModule{
 			valid							:= 0.U
 		}
 		roce.io.qp_init.valid				:= valid
-		
-		roce.io.qp_init.bits.remote_ip		:= 0x02bda8c0.U
-		roce.io.local_ip_address			:= 0x01bda8c0.U//0x01bda8c0 01/189/168/192
+		roce.io.qp_init.bits.remote_ip		:= 0x01bda8c0.U
+		roce.io.local_ip_address			:= 0x02bda8c0.U//0x01bda8c0 01/189/168/192
 		roce.io.qp_init.bits.credit			:= control_reg(103)
 
 		val cur_qp							= RegInit(UInt(1.W),0.U)
@@ -120,27 +115,30 @@ class RPSClientTop extends RawModule{
 		when(cur_qp === 0.U){
 			roce.io.qp_init.bits.qpn			:= 1.U
 			roce.io.qp_init.bits.remote_qpn		:= 1.U
-			roce.io.qp_init.bits.local_psn		:= 0x1001.U
-			roce.io.qp_init.bits.remote_psn		:= 0x2001.U
+			roce.io.qp_init.bits.local_psn		:= 0x2001.U
+			roce.io.qp_init.bits.remote_psn		:= 0x1001.U
 		}.otherwise{
 			roce.io.qp_init.bits.qpn			:= 2.U
 			roce.io.qp_init.bits.remote_qpn		:= 2.U
-			roce.io.qp_init.bits.local_psn		:= 0x1002.U
-			roce.io.qp_init.bits.remote_psn		:= 0x2002.U
+			roce.io.qp_init.bits.local_psn		:= 0x2002.U
+			roce.io.qp_init.bits.remote_psn		:= 0x1002.U
 		}
 	}
 
-	val clientAndCS:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer())}
-	clientAndCS.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn,userClk)
-	clientAndCS.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn,userClk)
-	roce.io.s_tx_meta					<> XConverter(clientAndCS.io.send_meta,userClk,userRstn,netClk)
-	roce.io.s_send_data					<> XConverter(clientAndCS.io.send_data,userClk,userRstn,netClk)
-	withClockAndReset(userClk, !userRstn){
-		val start						= RegNext(control_reg(102) === 1.U)
-		clientAndCS.io.num_rpcs			:= control_reg(110)
-		clientAndCS.io.en_cycles		:= control_reg(111)
-		clientAndCS.io.total_cycles		:= control_reg(112)
-		clientAndCS.io.start			:= start
-	}
+	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BlockServer(4,12,true))}
+
+	bench.io.start_addr			:= Cat(control_reg(110), control_reg(111))
+	bench.io.num_rpcs			:= control_reg(112)
+	bench.io.pfch_tag			:= control_reg(113)
+	bench.io.tag_index			:= control_reg(114)
+	bench.io.c2h_cmd			<> qdma.io.c2h_cmd
+	bench.io.c2h_data			<> qdma.io.c2h_data
+	bench.io.h2c_cmd			<> qdma.io.h2c_cmd
+	bench.io.h2c_data			<> qdma.io.h2c_data
+	bench.io.axib 				<> XAXIConverter(qdma.io.axib, qdma.io.pcie_clk, qdma.io.pcie_arstn, qdma.io.user_clk, qdma.io.user_arstn)
+	bench.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn,userClk)
+	bench.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn,userClk)
+	roce.io.s_tx_meta			<> XConverter(bench.io.send_meta,userClk,userRstn,netClk)
+	roce.io.s_send_data			<> XConverter(bench.io.send_data,userClk,userRstn,netClk)
 	Collector.connect_to_status_reg(status_reg,100)
 }

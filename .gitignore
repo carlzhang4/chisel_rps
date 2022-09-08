@@ -6,4 +6,6 @@
 */build
 */.vscode
 */gen
+/log
+/gen
 config.json

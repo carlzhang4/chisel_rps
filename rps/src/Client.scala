@@ -10,6 +10,8 @@ import common.Collector
 import roce.util.TX_META
 import roce.util.RECV_META
 import roce.util.APP_OP_CODE
+import common.Timer
+import common.connection.Connection
 
 class Client()extends Module{
 	//client send 4KB data out, and recv 64B rps resp, count the latency
@@ -25,6 +27,9 @@ class Client()extends Module{
 
 		val recv_meta	= Flipped(Decoupled(new RECV_META))
 		val recv_data	= Flipped(Decoupled(AXIS(512)))
+
+		val en_cycles		= Input(UInt(32.W))
+		val total_cycles	= Input(UInt(32.W))
 	})
 
 	val risingStart		= io.start===1.U & RegNext(!io.start)
@@ -32,7 +37,8 @@ class Client()extends Module{
 
 	{//send meta
 		val q 						= XQueue(new TX_META, TODO_32)
-		q.io.out					<> io.send_meta
+		// q.io.out					<> io.send_meta
+		Connection.limit(q.io.out,io.send_meta,io.en_cycles,io.total_cycles)
 		val reg_count				= RegInit(UInt(32.W), 0.U)//count q.io.in.fire()
 		val state					= RegInit(sIdle)
 		switch(state){
@@ -117,60 +123,28 @@ class Client()extends Module{
 		reg_count_meta
 	}
 
-	val reg_time					= RegInit(UInt(64.W),0.U)
-	val reg_latency					= RegInit(UInt(64.W),0.U)
-
-	when(io.start === 1.U){//when reset, it also resets
-		when(reg_count_recv_meta =/= io.num_rpcs){
-			reg_time				:= reg_time+1.U
-		}.otherwise{
-			reg_time				:= reg_time
-		}
+	val reg_first_send	= RegInit(Bool(),false.B)
+	when(io.send_meta.fire()){
+		reg_first_send	:= true.B
+	}.otherwise{
+		reg_first_send	:= reg_first_send
 	}
+	val begin			= io.send_meta.fire() & !reg_first_send
+	val end				= reg_count_recv_meta+1.U===io.num_rpcs & io.recv_meta.fire()
+	val total_cycles	= Timer(begin, end).latency
 
-	when(io.start === 1.U){//when reset, it also resets
-		when(io.send_meta.fire() && io.recv_meta.fire()){
-			reg_latency				:= reg_latency
-		}.elsewhen(io.send_meta.fire()){
-			reg_latency				:= reg_latency - reg_time
-		}.elsewhen(io.recv_meta.fire()){
-			reg_latency				:= reg_latency + reg_time
-		}.otherwise{
-			reg_latency				:= reg_latency
-		}
-	}
+
+	val e2e_timer = Timer(io.send_meta.fire(),io.recv_meta.fire())
+	val e2e_latency = e2e_timer.latency
+	val e2e_start_cnt = e2e_timer.cnt_start
+	val e2e_end_cnt = e2e_timer.cnt_end
 
 	Collector.fire(io.send_meta)
 	Collector.fire(io.send_data)
-	Collector.fireLast(io.send_data)
 	Collector.fire(io.recv_meta)
 	Collector.fire(io.recv_data)
-	Collector.fireLast(io.recv_data)
 
-	Collector.report(reg_time)
-	Collector.report(reg_latency)
+	Collector.report(e2e_latency,fix_str = "REG_E2E_LATENCY")
 
-	// val tests = Seq.fill(2)(Module(new Test))
-
-
-	// tests(0).io.in		:= reg_time(31,0)
-	// tests(1).io.in		:= reg_time(63,32)
-
-	// Collector.report(reg_time)
-	// Collector.report(reg_time(63,32),"partial")
-	// Collector.count(risingStart===1.U,"risingStart===1.U")
-	// Collector.count(risingStart===0.U,"risingStart===0.U",width = 64)
-
-	Collector.report(reg_time(0),"test_0")
-	Collector.report(reg_time(1),"test_1")
-	class Test()extends Module{
-		val io	= IO(new Bundle{
-			val in	= Input(UInt(32.W))
-			val out = Output(UInt(32.W))
-		})
-
-		io.out	:= io.in+13.U
-
-		Collector.report(io.out, "tests")
-	}
+	Collector.report(total_cycles,fix_str = "REG_TOTAL_CYCLES")
 }

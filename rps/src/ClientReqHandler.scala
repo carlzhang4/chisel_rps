@@ -14,118 +14,43 @@ import roce.util.TX_META
 import roce.util.RECV_META
 import roce.util.APP_OP_CODE
 import common.Collector
+import common.Timer
+import common.ToZero
+import common.storage.RegSlice
 
-class ChannelWriter(index:Int) extends Module{
-	def TODO_32 = 32
-	def PACK_SIZE = 4*1024
-	val io = IO(new Bundle{
-		val aw			= Decoupled(AXI_HBM_ADDR())
-		val w			= Decoupled(AXI_HBM_W())
-		val recv_meta	= Flipped(Decoupled(new RECV_META))
-		val recv_data	= Flipped(Decoupled(new AXIS(512)))
-	})
-	io.aw.bits.hbm_init()
-	io.w.bits.hbm_init()
-
-	val recv_meta		= XQueue(io.recv_meta, TODO_32)
-	val recv_data		= XQueue(io.recv_data, PACK_SIZE/64)//hold at least a packet
-
-	//aw
-	{
-		val sParseCmd :: sSendAw :: sEnd :: Nil = Enum(3)
-
-		val reg_addr				= RegInit(UInt(28.W), 0.U)//256M
-		val en 						= io.aw.fire()
-		val (counter,wrap)			= Counter((0 until PACK_SIZE by 512), en)//hbm aw max 512bytes
-		val fire_bytes 				= (16.U)<<5 //hbm aw max 16 beats
-		val state = RegInit(sParseCmd)
-		switch(state){
-			is(sParseCmd){
-				when(recv_meta.fire()){
-					state			:= sSendAw
-				}
-			}
-			is(sSendAw){
-				when(wrap){
-					state			:= sParseCmd
-				}
-			}
-		}
-		recv_meta.ready				:= state === sParseCmd
-
-		io.aw.valid					:= state === sSendAw
-		io.aw.bits.addr				:= (256*1024*1024*index).U + reg_addr
-		io.aw.bits.len				:= 0xf.U //hbm aw max 16 beats
-
-		when(io.aw.fire()){
-			reg_addr 				:= reg_addr+fire_bytes
-		}
-	}
-
-	//w
-	{
-		val (counter,wrap)			= Counter(io.w.fire(), 16)//hbm aw max 16beats
-
-		val reg_data		= RegInit(UInt(512.W),0.U)
-		val sFetch :: sFirst :: sSecond :: Nil = Enum(3)
-		val state = RegInit(sFetch)
-		switch(state){
-			is(sFetch){
-				reg_data		:= recv_data.bits.data
-				when(recv_data.fire()){
-					when(io.w.fire()){
-						state	:= sSecond
-					}.otherwise{
-						state	:= sFirst
-					}
-				}
-			}
-			is(sFirst){
-				when(io.w.fire()){
-					state		:= sSecond
-				}
-			}
-			is(sSecond){
-				when(io.w.fire()){
-					state		:= sFetch
-				}
-			}
-		}
-		recv_data.ready	:= state===sFetch
-		when(state===sFetch){
-			io.w.valid	:= recv_data.valid
-		}.otherwise{
-			io.w.valid	:= 1.U
-		}
-		when(state===sFetch){
-			io.w.bits.data	:= recv_data.bits.data(255,0)
-		}.elsewhen(state===sFirst){
-			io.w.bits.data	:= reg_data(255,0)
-		}.otherwise{
-			io.w.bits.data	:= reg_data(511,256)
-		}
-		io.w.bits.last		:= wrap
-	}
-	
-}
-
-class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
-	def TODO_32 = 32
-	def PACK_SIZE = 4*1024
+class ClientReqInterface(NumChannels:Int,Factor:Int) extends Module{
 	def CLIENT_HOST_MEM_OFFSET = 0
 	def HOST_MEM_PARTITION = 1024L*1024*1024
+
 	val io = IO(new Bundle{
 		val recv_meta		= Flipped(Decoupled(new RECV_META))
 		val recv_data		= Flipped(Decoupled(AXIS(512)))
 		val axi_hbm			= Vec(NumChannels,AXI_HBM())
 
-		val meta2host		= Decoupled(new Meta2Host)
-		val data2host		= Decoupled(new Data2Host)
-		val meta_from_host	= Flipped(Decoupled(new MetaFromHost))
+		val writeCMD		= Decoupled(new WriteCMD)
+		val writeData		= Decoupled(new WriteData)
+		val axib_data		= Flipped(Decoupled(new AxiBridgeData))
 
 		val send_meta		= Decoupled(new TX_META)
 		val send_data		= Decoupled(AXIS(512))
+
+		//h2c
+		val readCMD			= Decoupled(new ReadCMD)
+		val readData		= Flipped(Decoupled(new ReadData))
 	})
+}
+
+class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends ClientReqInterface(NumChannels,Factor){
+	def TODO_32 = 32
+	def PACK_SIZE = 4*1024
+
+	io.readCMD.valid		:= 0.U
+	ToZero(io.readCMD.bits)
+	io.readData.ready		:= 1.U
+
+	val client_req_qdma_latency = Timer(io.writeCMD.fire(), io.axib_data.fire()).latency
+
+	Collector.report(client_req_qdma_latency,fix_str = "REG_CLIENT_REQ_QDMA_LATENCY")
 
 	for(i<-0 until NumChannels){
 		io.axi_hbm(i).hbm_init()
@@ -154,8 +79,8 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 
 	//use q_meta_dup to produce compress cmd
 	val q_compress_cmd						= XQueue(new Meta2Compressor, TODO_32)
-	val q_2host_meta						= XQueue(new Meta2Host, TODO_32)
-	val q_2host_data						= XQueue(new Data2Host, TODO_32)
+	val q_2host_meta						= XQueue(new WriteCMD, TODO_32)
+	val q_2host_data						= XQueue(new WriteData, TODO_32)
 	val reg_addr							= RegInit(UInt(33.W),0.U)//hbm address
 	val reg_offset							= RegInit(UInt(48.W),0.U)
 	
@@ -166,8 +91,8 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 	q_2host_data.io.in.bits.last			:= 1.U
 	q_compress_cmd.io.in.bits.addr			:= reg_addr
 
-	q_2host_meta.io.out						<> io.meta2host
-	q_2host_data.io.out						<> io.data2host
+	q_2host_meta.io.out						<> io.writeCMD
+	q_2host_data.io.out						<> io.writeData
 
 	when(q_2host_meta.io.in.fire()){//when meta fires, data fires too
 		reg_offset							:= reg_offset+64.U
@@ -188,7 +113,7 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 
 	//compress cmd directly, can add a many2one to be controlled by cpu
 	compressorHBM.io.cmd_in				<> q_compress_cmd.io.out
-	Connection.one2one(io.meta_from_host)(io.send_meta)
+	Connection.one2one(io.axib_data)(io.send_meta)
 	io.send_meta.bits.rdma_cmd			:= APP_OP_CODE.APP_SEND
 	io.send_meta.bits.qpn				:= 2.U
 	io.send_meta.bits.length				:= (2*1024).U//todo, to ssd pack size 
@@ -223,11 +148,91 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends Module{
 	Collector.fire(io.recv_meta)
 	Collector.fire(io.recv_data)
 	Collector.fireLast(io.recv_data)
-	Collector.fire(io.meta2host)
-	Collector.fire(io.data2host)
-	Collector.fireLast(io.data2host)
-	Collector.fire(io.meta_from_host)
+	Collector.fire(io.writeCMD)
+	Collector.fire(io.writeData)
+	Collector.fireLast(io.writeData)
+	Collector.fire(io.axib_data)
 	Collector.fire(io.send_meta)
 	Collector.fire(io.send_data)
 	Collector.fireLast(io.send_data)
+}
+
+class DummyClientReqHandler extends ClientReqInterface(0,0){
+	def TODO_32 = 32
+
+	{//recv meta and data, then write to DMA
+		val recv_meta					= XQueue(io.recv_meta, TODO_32)
+		val reg_offset					= RegInit(UInt(48.W),0.U)
+		Connection.one2one(recv_meta)(io.writeCMD)
+		io.writeCMD.bits.addr_offset	:= (reg_offset%HOST_MEM_PARTITION.U)+CLIENT_HOST_MEM_OFFSET.U
+		io.writeCMD.bits.len			:= 4096.U
+
+		when(io.writeCMD.fire()){
+			reg_offset					:= reg_offset + 4096.U
+		}
+
+		val recv_data			= XQueue(io.recv_data, TODO_32)
+		Connection.one2one(recv_data)(io.writeData)
+		io.writeData.bits.data	<> recv_data.bits.data
+		io.writeData.bits.last	<> recv_data.bits.last
+	}
+	
+	val axib_data					= XQueue(io.axib_data, TODO_32)
+	Connection.one2one(axib_data)(io.readCMD)
+	io.readCMD.bits.addr_offset		:= axib_data.bits.data(32,0)
+	io.readCMD.bits.len				:= 2048.U
+
+	val readDataDelay				= RegSlice(io.readData)
+	val q_send_data					= XQueue(AXIS(512),TODO_32)
+	Connection.one2one(readDataDelay)(q_send_data.io.in)
+	ToAllOnes(q_send_data.io.in.bits.keep)
+	q_send_data.io.in.bits.data		<> readDataDelay.bits.data
+	q_send_data.io.in.bits.last		<> readDataDelay.bits.last
+	io.send_data					<> RegSlice(q_send_data.io.out)
+
+	val q_send_meta					= XQueue(new TX_META,TODO_32)
+	val first_beat_flag				= RegInit(Bool(),true.B)
+	when(q_send_data.io.in.fire() && first_beat_flag){
+		q_send_meta.io.in.valid		:= 1.U
+	}.otherwise{
+		q_send_meta.io.in.valid		:= 0.U
+	}
+	q_send_meta.io.in.bits.rdma_cmd		:= APP_OP_CODE.APP_SEND
+	q_send_meta.io.in.bits.qpn			:= 2.U
+	q_send_meta.io.in.bits.length		:= 2048.U
+	q_send_meta.io.in.bits.local_vaddr	:= 0.U
+	q_send_meta.io.in.bits.remote_vaddr	:= 0.U
+	q_send_meta.io.out					<> io.send_meta
+	when(q_send_data.io.in.fire()){
+		first_beat_flag				:= false.B
+		when(q_send_data.io.in.bits.last===1.U){
+			first_beat_flag			:= true.B
+		}
+	}
+
+	val q_send_meta_overflow = q_send_meta.io.in.valid & !q_send_meta.io.in.ready
+	Collector.trigger(q_send_meta_overflow)
+	
+	Collector.fire(io.recv_meta)
+	Collector.fire(io.recv_data)
+
+	Collector.fire(io.writeCMD)
+	Collector.fire(io.writeData)
+
+	Collector.fire(io.axib_data)
+
+	Collector.fire(io.send_meta)
+	Collector.fire(io.send_data)
+
+	Collector.fire(io.readCMD)
+	Collector.fire(io.readData)
+
+	Collector.report(io.writeData.valid)
+	Collector.report(io.writeData.ready)
+	Collector.report(io.writeCMD.valid)
+	Collector.report(io.writeCMD.ready)
+	Collector.report(io.recv_meta.valid)
+	Collector.report(io.recv_meta.ready)
+	Collector.report(io.recv_data.valid)
+	Collector.report(io.recv_data.ready)
 }

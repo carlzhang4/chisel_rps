@@ -34,9 +34,8 @@ add_cells_to_pblock [get_pblocks pblock_qdma] [get_cells -quiet [list qdma]]
 resize_pblock [get_pblocks pblock_qdma] -add {SLR0}
 
 create_pblock pblock_roce
-resize_pblock [get_pblocks pblock_roce] -add {SLR0:SLR1}
+resize_pblock [get_pblocks pblock_roce] -add {SLR1:SLR1}
 add_cells_to_pblock pblock_roce [get_cells [list roce]]
-# add_cells_to_pblock pblock_roce [get_cells [list clientAndCS]] #when there is ila in it, comment this line
 
 create_pblock pblock_cmac
 add_cells_to_pblock [get_pblocks pblock_cmac] [get_cells -quiet [list cmac]]

@@ -14,6 +14,7 @@ import roce.util.TX_META
 import roce.util.RECV_META
 import roce.util.APP_OP_CODE
 import common.Collector
+import common.Timer
 
 class CSReqHandler extends Module{
 	def TODO_32 = 32
@@ -23,17 +24,20 @@ class CSReqHandler extends Module{
 		val recv_meta		= Flipped(Decoupled(new RECV_META))
 		val recv_data		= Flipped(Decoupled(AXIS(512)))
 
-		val meta_from_host	= Flipped(Decoupled(new MetaFromHost))
-		val meta2host		= Decoupled(new Meta2Host)
-		val data2host		= Decoupled(new Data2Host)
+		val axib_data		= Flipped(Decoupled(new AxiBridgeData))
+		val writeCMD		= Decoupled(new WriteCMD)
+		val writeData		= Decoupled(new WriteData)
 
 		val send_meta		= Decoupled(new TX_META)
 		val send_data		= Decoupled(AXIS(512))
 	})
 	io.recv_data.ready		:= 1.U//not used
 
-	val q_2host_meta						= XQueue(new Meta2Host, TODO_32)
-	val q_2host_data						= XQueue(new Data2Host, TODO_32)
+	val cs_req_qdma_latency = Timer(io.writeCMD.fire(), io.axib_data.fire()).latency
+	Collector.report(cs_req_qdma_latency,fix_str = "REG_CS_REQ_QDMA_LATENCY")
+
+	val q_2host_meta						= XQueue(new WriteCMD, TODO_32)
+	val q_2host_data						= XQueue(new WriteData, TODO_32)
 	val reg_offset							= RegInit(UInt(48.W),0.U)
 
 	Connection.one2many(io.recv_meta)(q_2host_meta.io.in, q_2host_data.io.in)
@@ -43,14 +47,14 @@ class CSReqHandler extends Module{
 	q_2host_data.io.in.bits.data			:= reg_offset + CS_HOST_MEM_OFFSET.U + 1.U
 	q_2host_data.io.in.bits.last			:= 1.U
 
-	q_2host_meta.io.out						<> io.meta2host
-	q_2host_data.io.out						<> io.data2host
+	q_2host_meta.io.out						<> io.writeCMD
+	q_2host_data.io.out						<> io.writeData
 
 	when(q_2host_meta.io.in.fire()){//when meta fires, data fires too
 		reg_offset							:= reg_offset+64.U
 	}
 
-	Connection.one2many(io.meta_from_host)(io.send_meta, io.send_data)
+	Connection.one2many(io.axib_data)(io.send_meta, io.send_data)
 	io.send_meta.bits.rdma_cmd			:= APP_OP_CODE.APP_SEND
 	io.send_meta.bits.qpn				:= 1.U
 	io.send_meta.bits.length				:= 64.U
@@ -68,12 +72,7 @@ class CSReqHandler extends Module{
 
 	Collector.fire(io.recv_meta)
 	Collector.fire(io.recv_data)
-	Collector.fireLast(io.recv_data)
-	Collector.fire(io.meta2host)
-	Collector.fire(io.data2host)
-	Collector.fireLast(io.data2host)
-	Collector.fire(io.meta_from_host)
+	Collector.fire(io.axib_data)
 	Collector.fire(io.send_meta)
 	Collector.fire(io.send_data)
-	Collector.fireLast(io.send_data)
 }
