@@ -5,4 +5,5 @@
 /.vscode
 */build
 /log
+/gen
 config.json

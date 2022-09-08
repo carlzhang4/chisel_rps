@@ -87,10 +87,6 @@ class ClientAndChunckServer extends Module{
 	cs.io.recv_meta			<> router.io.out_meta(1)
 	cs.io.recv_data			<> router.io.out_data(1)
 
-	Collector.fire(arbiter.io.out_meta)
-	Collector.fire(arbiter.io.out_data)
-	Collector.fire(router.io.in_meta)
-	Collector.fire(router.io.in_data)
 
 	val phase1_latency = Timer(client.io.send_meta.fire(), cs.io.recv_meta.fire()).latency
 	val phase2_latency = Timer(cs.io.send_meta.fire(), client.io.recv_meta.fire()).latency

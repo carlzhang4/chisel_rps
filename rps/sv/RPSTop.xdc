@@ -25,6 +25,7 @@ set_false_path -from [get_clocks -of_objects [get_pins hbmDriver/mmcmGlbl/mmcm4_
 #qdma
 create_clock -name sys_clk -period 10 [get_ports qdma_pin_sys_clk_p]
 
+set_input_delay 5 -clock [get_clocks sys_clk] [get_ports qdma_pin_sys_rst_n]
 set_false_path -from [get_ports qdma_pin_sys_rst_n]
 set_property PULLUP true [get_ports qdma_pin_sys_rst_n]
 set_property IOSTANDARD LVCMOS18 [get_ports qdma_pin_sys_rst_n]

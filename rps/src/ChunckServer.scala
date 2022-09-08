@@ -46,8 +46,6 @@ class ChunckServer extends Module{
 
 	Collector.fire(io.send_meta)
 	Collector.fire(io.send_data)
-	Collector.fireLast(io.send_data)
 	Collector.fire(io.recv_meta)
 	Collector.fire(io.recv_data)
-	Collector.fireLast(io.recv_data)
 }

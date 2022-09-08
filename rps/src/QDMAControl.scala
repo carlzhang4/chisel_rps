@@ -13,10 +13,13 @@ import common.connection.SimpleRouter
 import common.connection.Connection
 import common.Collector
 import common.Timer
+import common.Statistics
+import common.axi.AXIS
 
 class QDMAControl extends Module{
 	val NUM_Q = 4
 	def TODO_512 = 512
+	def TODO_64 = 64
 	def NUM_AXIB_TYPE = 4
 	val NUM_AXIB_TYPE_BITS = log2Up(NUM_AXIB_TYPE)
 
@@ -25,10 +28,12 @@ class QDMAControl extends Module{
 		val tag_index				= Input(UInt(32.W))
 		val start_addr				= Input(UInt(64.W))
 
-		val meta2host				= Flipped(Decoupled(new Meta2Host))
-		val data2host				= Flipped(Decoupled(new Data2Host))
+		val writeCMD				= Flipped(Decoupled(new WriteCMD))
+		val writeData				= Flipped(Decoupled(new WriteData))
+		val readCMD					= Flipped(Decoupled(new ReadCMD))
+		val readData				= Decoupled(new ReadData)
 
-		val metaFromHost			= Decoupled(new MetaFromHost)
+		val axib_data				= Decoupled(new AxiBridgeData)
 
 		val axi						= Flipped(new AXIB)
 		val c2h_cmd					= Decoupled(new C2H_CMD)
@@ -52,30 +57,34 @@ class QDMAControl extends Module{
 		//aw and w
 		io.axi.aw.ready		:= 1.U
 
-		val q				= XQueue(new MetaFromHost, TODO_512)//must be large enough, otherwise bridge write may fail, num_w_fire < num_aw_fire
+		val q				= XQueue(new AxiBridgeData, TODO_512)//must be large enough, otherwise bridge write may fail, num_w_fire < num_aw_fire
 		Connection.one2one(q.io.in)(io.axi.w)
 		q.io.in.bits.data	<> io.axi.w.bits.data
-		q.io.out			<> io.metaFromHost
+		q.io.out			<> io.axib_data
 		//debug
-		val reg_max			= RegInit(UInt(32.W),0.U)
-		val reg_cur			= RegInit(UInt(32.W),0.U)
-
-		when(io.axi.w.valid && !io.axi.w.ready){
-			reg_cur			:= reg_cur+1.U
-		}.otherwise{
-			reg_cur			:= 0.U
-		}
-		when(reg_cur > reg_max){
-			reg_max			:= reg_cur
-		}
-		Collector.report(reg_max)
+		val max_axib_w_stall	= Statistics.longestActive(io.axi.w.valid && !io.axi.w.ready)
+		Collector.report(max_axib_w_stall)
 	}
 
-	//h2c is useless
+	//h2c
 	{
 		ToZero(io.h2c_cmd.bits)
-		io.h2c_cmd.valid	:= 0.U
-		io.h2c_data.ready	:= 0.U
+		Connection.one2one(io.h2c_cmd)(io.readCMD)
+		io.h2c_cmd.bits.addr	:= io.readCMD.bits.addr_offset + io.start_addr
+		io.h2c_cmd.bits.len		:= io.readCMD.bits.len
+		io.h2c_cmd.bits.sop		:= 1.U
+		io.h2c_cmd.bits.eop		:= 1.U
+		io.h2c_cmd.bits.qid		:= 0.U
+
+		val q_h2c_data			= XQueue(new ReadData, TODO_64)
+		Connection.one2one(q_h2c_data.io.in)(io.h2c_data)
+		q_h2c_data.io.in.bits.data	:= io.h2c_data.bits.data
+		q_h2c_data.io.in.bits.last	:= io.h2c_data.bits.last
+		io.readData			<> q_h2c_data.io.out
+
+		//debug
+		val max_h2c_data_stall	= Statistics.longestActive(io.h2c_data.valid && !io.h2c_data.ready)
+		Collector.report(max_h2c_data_stall)
 	}
 
 	//c2h
@@ -84,20 +93,18 @@ class QDMAControl extends Module{
 		when(io.tag_index === (RegNext(io.tag_index)+1.U)){
 			tags(RegNext(io.tag_index))	:= io.pfch_tag
 		}
-
-		//todo   cmd:addr/len/qid/pfch_tag
-		Connection.one2one(io.c2h_cmd)(io.meta2host)
+		Connection.one2one(io.c2h_cmd)(io.writeCMD)
 		ToZero(io.c2h_cmd.bits)
-		io.c2h_cmd.bits.qid			:= 0.U//todo qid == 0
+		io.c2h_cmd.bits.qid			:= 0.U
 		io.c2h_cmd.bits.pfch_tag	:= tags(0.U)
-		io.c2h_cmd.bits.addr		:= io.meta2host.bits.addr_offset + io.start_addr
-		io.c2h_cmd.bits.len			:= io.meta2host.bits.len
+		io.c2h_cmd.bits.addr		:= io.writeCMD.bits.addr_offset + io.start_addr
+		io.c2h_cmd.bits.len			:= io.writeCMD.bits.len
 		
 		//todo  data:ctrl_qid
-		Connection.one2one(io.c2h_data)(io.data2host)
+		Connection.one2one(io.c2h_data)(io.writeData)
 		ToZero(io.c2h_data.bits)
-		io.c2h_data.bits.data		<> io.data2host.bits.data
-		io.c2h_data.bits.last		<> io.data2host.bits.last
+		io.c2h_data.bits.data		<> io.writeData.bits.data
+		io.c2h_data.bits.last		<> io.writeData.bits.last
 
 	}
 	Collector.fire(io.axi.aw)
@@ -111,4 +118,17 @@ class QDMAControl extends Module{
 	Collector.report(qdma_latency,fix_str = "REG_QDMA_LATENCY")
 	Collector.report(qdma_latency_start_cnt)
 	Collector.report(qdma_latency_end_cnt)
+
+	Collector.fire(io.writeCMD)
+	Collector.fire(io.writeData)
+	Collector.fire(io.c2h_cmd)
+	Collector.fire(io.c2h_data)
+	Collector.report(io.writeCMD.valid)
+	Collector.report(io.writeCMD.ready)
+	Collector.report(io.writeData.valid)
+	Collector.report(io.writeData.ready)
+	Collector.report(io.c2h_cmd.valid)
+	Collector.report(io.c2h_cmd.ready)
+	Collector.report(io.c2h_data.valid)
+	Collector.report(io.c2h_data.ready)
 }

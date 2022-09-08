@@ -108,7 +108,7 @@ class RPSTop extends RawModule {
 	ToZero(roce.io.qp_init.bits)
 
 	roce.io.qp_init.bits.remote_udp_port	:= 17.U	
-	roce.io.qp_init.bits.credit				:= 1600.U	
+		
 
 	withClockAndReset(netClk, sw_reset || !netRstn){
 		val start 							= RegNext(control_reg(101) === 1.U)
@@ -122,6 +122,7 @@ class RPSTop extends RawModule {
 		roce.io.qp_init.valid				:= valid
 		roce.io.qp_init.bits.remote_ip		:= 0x01bda8c0.U
 		roce.io.local_ip_address			:= 0x02bda8c0.U//0x01bda8c0 01/189/168/192
+		roce.io.qp_init.bits.credit			:= control_reg(103)
 
 		val cur_qp							= RegInit(UInt(1.W),0.U)
 		when(roce.io.qp_init.fire()){
@@ -141,12 +142,12 @@ class RPSTop extends RawModule {
 		}
 	}
 
-	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BlockServer(4,12))}
+	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BlockServer(4,12,false))}
 
-	hbmDriver.io.axi_hbm(16) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(0), userClk, userRstn, hbmClk, hbmRstn))}
-	hbmDriver.io.axi_hbm(17) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(1), userClk, userRstn, hbmClk, hbmRstn))}
-	hbmDriver.io.axi_hbm(18) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(2), userClk, userRstn, hbmClk, hbmRstn))}
-	hbmDriver.io.axi_hbm(19) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm(3), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(16) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm.get(0), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(17) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm.get(1), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(18) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm.get(2), userClk, userRstn, hbmClk, hbmRstn))}
+	hbmDriver.io.axi_hbm(19) <> withClockAndReset(hbmClk,!hbmRstn){ AXIRegSlice(2)(XAXIConverter(bench.io.axi_hbm.get(3), userClk, userRstn, hbmClk, hbmRstn))}
 
 	bench.io.start_addr			:= Cat(control_reg(110), control_reg(111))
 	bench.io.num_rpcs			:= control_reg(112)

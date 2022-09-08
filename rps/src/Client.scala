@@ -141,14 +141,10 @@ class Client()extends Module{
 
 	Collector.fire(io.send_meta)
 	Collector.fire(io.send_data)
-	Collector.fireLast(io.send_data)
 	Collector.fire(io.recv_meta)
 	Collector.fire(io.recv_data)
-	Collector.fireLast(io.recv_data)
 
 	Collector.report(e2e_latency,fix_str = "REG_E2E_LATENCY")
-	Collector.report(e2e_start_cnt)
-	Collector.report(e2e_end_cnt)
 
 	Collector.report(total_cycles,fix_str = "REG_TOTAL_CYCLES")
 }
