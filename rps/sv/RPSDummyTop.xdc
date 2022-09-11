@@ -34,7 +34,7 @@ add_cells_to_pblock [get_pblocks pblock_qdma] [get_cells -quiet [list qdma]]
 resize_pblock [get_pblocks pblock_qdma] -add {SLR0}
 
 create_pblock pblock_roce
-resize_pblock [get_pblocks pblock_roce] -add {SLR1:SLR1}
+resize_pblock [get_pblocks pblock_roce] -add {SLR1:SLR2}
 add_cells_to_pblock pblock_roce [get_cells [list roce]]
 
 create_pblock pblock_cmac

@@ -19,8 +19,8 @@ import common.ToAllOnes
 import common.storage.RegSlice
 import common.connection.SerialRouter
 import common.connection.SimpleRouter
-import roce.util.TX_META
-import roce.util.RECV_META
+import network.roce.util.TX_META
+import network.roce.util.RECV_META
 import common.Collector
 import common.Timer
 

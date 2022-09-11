@@ -15,6 +15,8 @@ import common.Collector
 import common.Timer
 import common.Statistics
 import common.axi.AXIS
+import common.BaseILA
+import common.connection.CreditQ
 
 class QDMAControl extends Module{
 	val NUM_Q = 4
@@ -58,12 +60,14 @@ class QDMAControl extends Module{
 		io.axi.aw.ready		:= 1.U
 
 		val q				= XQueue(new AxiBridgeData, TODO_512)//must be large enough, otherwise bridge write may fail, num_w_fire < num_aw_fire
-		Connection.one2one(q.io.in)(io.axi.w)
+		io.axi.aw.ready		:= q.io.count < TODO_512.U - 64.U//almostfull
+		// Connection.one2one(q.io.in)(io.axi.w)
+		q.io.in.valid		:= io.axi.w.valid
+		io.axi.w.ready		:= 1.U //never block w data, just report conjection
 		q.io.in.bits.data	<> io.axi.w.bits.data
 		q.io.out			<> io.axib_data
-		//debug
-		val max_axib_w_stall	= Statistics.longestActive(io.axi.w.valid && !io.axi.w.ready)
-		Collector.report(max_axib_w_stall)
+		val axib_w_lost_num	= Statistics.count(io.axi.w.valid && ~q.io.in.ready)
+		Collector.report(axib_w_lost_num)
 	}
 
 	//h2c

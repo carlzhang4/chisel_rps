@@ -10,9 +10,9 @@ import common.storage.XQueue
 import common.connection.CompositeRouter
 import common.ToAllOnes
 import common.connection.Connection
-import roce.util.TX_META
-import roce.util.RECV_META
-import roce.util.APP_OP_CODE
+import network.roce.util.TX_META
+import network.roce.util.RECV_META
+import network.roce.util.APP_OP_CODE
 import common.Collector
 import common.Timer
 

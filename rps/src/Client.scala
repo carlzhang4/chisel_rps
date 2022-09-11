@@ -7,9 +7,9 @@ import common.storage.XQueue
 import common.ToZero
 import common.ToAllOnes
 import common.Collector
-import roce.util.TX_META
-import roce.util.RECV_META
-import roce.util.APP_OP_CODE
+import network.roce.util.TX_META
+import network.roce.util.RECV_META
+import network.roce.util.APP_OP_CODE
 import common.Timer
 import common.connection.Connection
 

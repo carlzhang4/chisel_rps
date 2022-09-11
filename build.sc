@@ -52,27 +52,38 @@ object hbm extends ScalaModule{
 	def mainClass = Some("hbm.elaborate")
 }
 
-object roce extends ScalaModule{
+// object roce extends ScalaModule{
+// 	override def scalaVersion = "2.12.13"
+// 	override def scalacOptions = Setting.scalacOptions
+// 	override def scalacPluginIvyDeps = Setting.scalacPluginIvyDeps
+// 	override def ivyDeps = Agg(
+// 		ivy"edu.berkeley.cs::chisel3:3.4.4",
+// 	)
+// 	def moduleDeps = Seq(common,qdma,cmac)
+// 	def mainClass = Some("roce.elaborate")
+// }
+
+object network extends ScalaModule{
 	override def scalaVersion = "2.12.13"
 	override def scalacOptions = Setting.scalacOptions
 	override def scalacPluginIvyDeps = Setting.scalacPluginIvyDeps
 	override def ivyDeps = Agg(
 		ivy"edu.berkeley.cs::chisel3:3.4.4",
 	)
-	def moduleDeps = Seq(common,qdma,cmac)
-	def mainClass = Some("roce.elaborate")
+	def moduleDeps = Seq(common,qdma)
+	def mainClass = Some("network.elaborate")
 }
 
-object cmac extends ScalaModule{
-	override def scalaVersion = "2.12.13"
-	override def scalacOptions = Setting.scalacOptions
-	override def scalacPluginIvyDeps = Setting.scalacPluginIvyDeps
-	override def ivyDeps = Agg(
-		ivy"edu.berkeley.cs::chisel3:3.4.4",
-	)
-	def moduleDeps = Seq(common)
-	def mainClass = Some("cmac.elaborate")
-}
+// object cmac extends ScalaModule{
+// 	override def scalaVersion = "2.12.13"
+// 	override def scalacOptions = Setting.scalacOptions
+// 	override def scalacPluginIvyDeps = Setting.scalacPluginIvyDeps
+// 	override def ivyDeps = Agg(
+// 		ivy"edu.berkeley.cs::chisel3:3.4.4",
+// 	)
+// 	def moduleDeps = Seq(common)
+// 	def mainClass = Some("cmac.elaborate")
+// }
 
 object rps extends ScalaModule{
 	override def scalaVersion = "2.12.13"
@@ -81,6 +92,6 @@ object rps extends ScalaModule{
 	override def ivyDeps = Agg(
 		ivy"edu.berkeley.cs::chisel3:3.4.4",
 	)
-	def moduleDeps = Seq(common,qdma,hbm,roce,cmac)
+	def moduleDeps = Seq(common,qdma,hbm,network)
 	def mainClass = Some("rps.elaborate")
 }

@@ -13,3 +13,6 @@
 [submodule "cmac"]
 	path = cmac
 	url = git@github.com:carlzhang4/cmac.git
+[submodule "network"]
+	path = network
+	url = git@github.com:qqwert0/network.git
