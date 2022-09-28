@@ -75,4 +75,6 @@ class CSReqHandler extends Module{
 	Collector.fire(io.axib_data)
 	Collector.fire(io.send_meta)
 	Collector.fire(io.send_data)
+	Collector.fire(io.writeCMD)
+	Collector.fire(io.writeData)
 }

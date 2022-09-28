@@ -52,16 +52,6 @@ object hbm extends ScalaModule{
 	def mainClass = Some("hbm.elaborate")
 }
 
-// object roce extends ScalaModule{
-// 	override def scalaVersion = "2.12.13"
-// 	override def scalacOptions = Setting.scalacOptions
-// 	override def scalacPluginIvyDeps = Setting.scalacPluginIvyDeps
-// 	override def ivyDeps = Agg(
-// 		ivy"edu.berkeley.cs::chisel3:3.4.4",
-// 	)
-// 	def moduleDeps = Seq(common,qdma,cmac)
-// 	def mainClass = Some("roce.elaborate")
-// }
 
 object network extends ScalaModule{
 	override def scalaVersion = "2.12.13"

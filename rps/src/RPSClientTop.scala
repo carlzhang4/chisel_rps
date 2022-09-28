@@ -72,7 +72,7 @@ class RPSClientTop extends RawModule{
 
 	sw_reset			:= control_reg(100) === 1.U
 	
-	val roce								= withClockAndReset(netClk, sw_reset || !netRstn){Module(new NetworkStack)}
+	val roce								= Module(new NetworkStack)
 	roce.io.pin								<> cmac_pin
 	roce.io.user_clk						:= netClk
 	roce.io.user_arstn						:= netRstn
@@ -85,6 +85,7 @@ class RPSClientTop extends RawModule{
 	roce.io.m_cmpt_meta.ready				:= 1.U
 	roce.io.arp_rsp.ready					:= 1.U
 	roce.io.arp_req.valid					:= 0.U
+	roce.io.sw_reset						:= sw_reset
 	ToZero(roce.io.s_mem_read_data.bits)
 	ToZero(roce.io.qp_init.bits)
 
@@ -101,8 +102,8 @@ class RPSClientTop extends RawModule{
 		}
 		roce.io.qp_init.valid				:= valid
 		
-		roce.io.qp_init.bits.remote_ip		:= 0x02bda8c0.U
-		roce.io.ip_address					:= 0x01bda8c0.U//0x01bda8c0 01/189/168/192
+		roce.io.qp_init.bits.remote_ip		:= 0x52bda8c0.U
+		roce.io.ip_address					:= 0x51bda8c0.U//0x01bda8c0 01/189/168/192
 		roce.io.qp_init.bits.credit			:= control_reg(103)
 
 		val cur_qp							= RegInit(UInt(1.W),0.U)
@@ -128,7 +129,8 @@ class RPSClientTop extends RawModule{
 		}.elsewhen(roce.io.arp_req.fire()){
 			valid_arp						:= 0.U
 		}
-		roce.io.arp_req.bits				:= 0x02bda8c0.U
+		roce.io.arp_req.valid				:= valid_arp
+		roce.io.arp_req.bits				:= 0x52bda8c0.U
 	}
 
 	val clientAndCS:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer())}

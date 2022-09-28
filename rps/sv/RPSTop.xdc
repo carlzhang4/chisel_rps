@@ -46,9 +46,13 @@ resize_pblock pblock_qdma -add SLR0:SLR0
 add_cells_to_pblock pblock_qdma [get_cells [list qdma]]
 
 create_pblock pblock_roce
-resize_pblock pblock_roce -add SLR1:SLR2
-add_cells_to_pblock pblock_roce [get_cells [list roce]]
+resize_pblock pblock_roce -add SLR0:SLR1
+add_cells_to_pblock pblock_roce [get_cells [list roce/roce]]
+
+create_pblock pblock_1
+resize_pblock [get_pblocks pblock_1] -add {SLR1}
+add_cells_to_pblock pblock_1 [get_cells [list roce/ip]]
 
 create_pblock pblock_cmac
 resize_pblock pblock_cmac -add SLR2:SLR2
-add_cells_to_pblock pblock_cmac [get_cells [list cmac]]
+add_cells_to_pblock pblock_cmac [get_cells [list roce/cmac]]

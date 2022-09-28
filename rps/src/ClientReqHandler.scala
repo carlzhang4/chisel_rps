@@ -157,6 +157,7 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends ClientReqInterf
 
 class DummyClientReqHandler extends ClientReqInterface(0,0){
 	def TODO_32 = 32
+	def TODO_1024 = 1024
 	def PacketSize = 4096
 	def CompressedSize = 2048
 	/*
@@ -195,7 +196,7 @@ class DummyClientReqHandler extends ClientReqInterface(0,0){
 		recv_meta
 	}
 	
-	val axib_data					= XQueue(io.axib_data, TODO_32)
+	val axib_data					= XQueue(io.axib_data, TODO_1024)
 	// Connection.many2one(axib_data,creditQ.io.out)(io.readCMD)
 	axib_data.ready					:= creditQ.io.out.valid & io.readCMD.ready
 	creditQ.io.out.ready			:= axib_data.valid & io.readCMD.ready
@@ -230,7 +231,7 @@ class DummyClientReqHandler extends ClientReqInterface(0,0){
 
 
 	val readDataDelay				= RegSlice(io.readData)
-	val q_send_data					= XQueue(AXIS(512),TODO_32)
+	val q_send_data					= XQueue(AXIS(512),TODO_1024)
 	Connection.one2one(readDataDelay)(q_send_data.io.in)
 	ToAllOnes(q_send_data.io.in.bits.keep)
 	q_send_data.io.in.bits.data		<> readDataDelay.bits.data

@@ -60,7 +60,6 @@ class QDMAControl extends Module{
 		io.axi.aw.ready		:= 1.U
 
 		val q				= XQueue(new AxiBridgeData, TODO_512)//must be large enough, otherwise bridge write may fail, num_w_fire < num_aw_fire
-		io.axi.aw.ready		:= q.io.count < TODO_512.U - 64.U//almostfull
 		// Connection.one2one(q.io.in)(io.axi.w)
 		q.io.in.valid		:= io.axi.w.valid
 		io.axi.w.ready		:= 1.U //never block w data, just report conjection
@@ -68,6 +67,10 @@ class QDMAControl extends Module{
 		q.io.out			<> io.axib_data
 		val axib_w_lost_num	= Statistics.count(io.axi.w.valid && ~q.io.in.ready)
 		Collector.report(axib_w_lost_num)
+
+	val axi_w_num = Statistics.count(io.axi.w.valid && io.axi.w.ready)
+	val axi_aw_num = Statistics.count(io.axi.aw.valid && io.axi.aw.ready)
+	val h2c_cmd_num = Statistics.count(io.h2c_cmd.valid && io.h2c_cmd.ready)
 	}
 
 	//h2c

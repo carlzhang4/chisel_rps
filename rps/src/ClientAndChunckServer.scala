@@ -23,6 +23,7 @@ import network.roce.util.TX_META
 import network.roce.util.RECV_META
 import common.Collector
 import common.Timer
+import common.BaseILA
 
 
 
@@ -51,6 +52,13 @@ class ClientAndChunckServer extends Module{
 	val arbiter						= CompositeArbiter(new TX_META, AXIS(512), 2)
 	io.send_meta					<> arbiter.io.out_meta
 	io.send_data					<> arbiter.io.out_data
+
+	class ila_client(seq:Seq[Data]) extends BaseILA(seq)
+		val inst_client = Module(new ila_client(Seq(	
+			io.send_meta,
+			io.send_data,
+		)))
+	inst_client.connect(clock)
 
 	/*
 		* recv from net => io.in

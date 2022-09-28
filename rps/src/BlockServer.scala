@@ -141,6 +141,13 @@ class BlockServer(NumChannels:Int=4, Factor:Int=12, IsDummy:Boolean=false) exten
 
 		qdma_control.io.readCMD			<> client_req_handler.io.readCMD
 		qdma_control.io.readData		<> client_req_handler.io.readData
+
+		Collector.fire(arbiter.io.in_data(0))
+		Collector.fire(arbiter.io.in_meta(0))
+		Collector.fire(arbiter.io.in_data(1))
+		Collector.fire(arbiter.io.in_meta(1))
+		Collector.fire(arbiter.io.out_data)
+		Collector.fire(arbiter.io.out_meta)
 	}
 
 	val bs_req_process_latency = Timer(client_req_handler.io.recv_meta.fire(), client_req_handler.io.send_meta.fire()).latency
