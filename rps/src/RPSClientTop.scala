@@ -17,6 +17,7 @@ import qdma.QDMAPin
 import common.BaseILA
 import java.text.Collator
 import common.Collector
+import chisel3.util.experimental.BoringUtils
 
 
 class RPSClientTop extends RawModule{
@@ -134,10 +135,10 @@ class RPSClientTop extends RawModule{
 	}
 
 	val clientAndCS:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer())}
-	clientAndCS.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn,userClk)
-	clientAndCS.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn,userClk)
-	roce.io.s_tx_meta					<> XConverter(clientAndCS.io.send_meta,userClk,userRstn,netClk)
-	roce.io.s_send_data					<> XConverter(clientAndCS.io.send_data,userClk,userRstn,netClk)
+	clientAndCS.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn & !sw_reset,userClk)
+	clientAndCS.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn & !sw_reset,userClk)
+	roce.io.s_tx_meta					<> XConverter(clientAndCS.io.send_meta,userClk,userRstn & !sw_reset,netClk)
+	roce.io.s_send_data					<> XConverter(clientAndCS.io.send_data,userClk,userRstn & !sw_reset,netClk)
 	withClockAndReset(userClk, !userRstn){
 		val start						= RegNext(control_reg(102) === 1.U)
 		clientAndCS.io.num_rpcs			:= control_reg(110)
@@ -145,5 +146,6 @@ class RPSClientTop extends RawModule{
 		clientAndCS.io.total_cycles		:= control_reg(112)
 		clientAndCS.io.start			:= start
 	}
+	BoringUtils.addSource(control_reg(113),"global_client_maxCredit")
 	Collector.connect_to_status_reg(status_reg,100)
 }

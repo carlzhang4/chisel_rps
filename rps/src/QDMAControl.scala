@@ -16,7 +16,6 @@ import common.Timer
 import common.Statistics
 import common.axi.AXIS
 import common.BaseILA
-import common.connection.CreditQ
 
 class QDMAControl extends Module{
 	val NUM_Q = 4
@@ -68,9 +67,9 @@ class QDMAControl extends Module{
 		val axib_w_lost_num	= Statistics.count(io.axi.w.valid && ~q.io.in.ready)
 		Collector.report(axib_w_lost_num)
 
-	val axi_w_num = Statistics.count(io.axi.w.valid && io.axi.w.ready)
-	val axi_aw_num = Statistics.count(io.axi.aw.valid && io.axi.aw.ready)
-	val h2c_cmd_num = Statistics.count(io.h2c_cmd.valid && io.h2c_cmd.ready)
+		val q_free_slots	= (TODO_512.U - q.io.count).asTypeOf(UInt(32.W))
+		Collector.report(q_free_slots,fix_str = "REG_FREE_SLOTS")
+
 	}
 
 	//h2c

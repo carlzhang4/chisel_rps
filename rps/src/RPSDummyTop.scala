@@ -138,16 +138,14 @@ class RPSDummyTop extends RawModule {
 	bench.io.num_rpcs			:= control_reg(112)
 	bench.io.pfch_tag			:= control_reg(113)
 	bench.io.tag_index			:= control_reg(114)
-	BoringUtils.addSource(control_reg(115),"global_client_req_threads")
-	BoringUtils.addSource(control_reg(116),"global_client_req_threads_mem_range")
 	bench.io.c2h_cmd			<> qdma.io.c2h_cmd
 	bench.io.c2h_data			<> qdma.io.c2h_data
 	bench.io.h2c_cmd			<> qdma.io.h2c_cmd
 	bench.io.h2c_data			<> qdma.io.h2c_data
 	bench.io.axib 				<> XAXIConverter(qdma.io.axib, qdma.io.pcie_clk, qdma.io.pcie_arstn, qdma.io.user_clk, qdma.io.user_arstn)
-	bench.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn,userClk)
-	bench.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn,userClk)
-	roce.io.s_tx_meta			<> XConverter(bench.io.send_meta,userClk,userRstn,netClk)
-	roce.io.s_send_data			<> XConverter(bench.io.send_data,userClk,userRstn,netClk)
+	bench.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn & !sw_reset,userClk)
+	bench.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn & !sw_reset,userClk)
+	roce.io.s_tx_meta			<> XConverter(bench.io.send_meta,userClk,userRstn & !sw_reset,netClk)
+	roce.io.s_send_data			<> XConverter(bench.io.send_data,userClk,userRstn & !sw_reset,netClk)
 	Collector.connect_to_status_reg(status_reg,100)
 }

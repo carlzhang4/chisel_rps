@@ -12,10 +12,13 @@ import network.roce.util.RECV_META
 import network.roce.util.APP_OP_CODE
 import common.Timer
 import common.connection.Connection
+import common.connection.CreditQ
+import chisel3.util.experimental.BoringUtils
 
 class Client()extends Module{
 	//client send 4KB data out, and recv 64B rps resp, count the latency
 	def TODO_32 		= 32
+	def TODO_1024 		= 1024
 	def MSG_BEATS		= 64 // 4K/64=64
 	def PACK_LENGTH		= 4*1024
 	val io = IO(new Bundle{
@@ -35,10 +38,18 @@ class Client()extends Module{
 	val risingStart		= io.start===1.U & RegNext(!io.start)
 	val sIdle :: sWork :: sEnd :: Nil = Enum(3)
 
+	val maxCredit		= Wire(UInt(32.W))
+	maxCredit			:= 0.U
+	BoringUtils.addSink(maxCredit,"global_client_maxCredit")
+	val creditQ				= Module(new CreditQ())
+	creditQ.io.maxCredit	:= maxCredit
+
 	{//send meta
 		val q 						= XQueue(new TX_META, TODO_32)
 		// q.io.out					<> io.send_meta
-		Connection.limit(q.io.out,io.send_meta,io.en_cycles,io.total_cycles)
+		// Connection.limit(q.io.out,io.send_meta,io.en_cycles,io.total_cycles)
+		Connection.one2many(q.io.out)(io.send_meta, creditQ.io.in)
+		io.send_meta.bits			:= q.io.out.bits
 		val reg_count				= RegInit(UInt(32.W), 0.U)//count q.io.in.fire()
 		val state					= RegInit(sIdle)
 		switch(state){
@@ -107,8 +118,12 @@ class Client()extends Module{
 	}
 
 	val reg_count_recv_meta = {//recv
+
+		val q_meta					= XQueue(new RECV_META,TODO_32)
+		Connection.many2one(io.recv_meta, creditQ.io.out)(q_meta.io.in)
+		q_meta.io.in.bits			:= io.recv_meta.bits
 		val reg_count_meta			= RegInit(UInt(32.W),0.U)
-		val meta					= io.recv_meta
+		val meta					= q_meta.io.out
 		val data					= io.recv_data
 		meta.ready					:= 1.U
 		data.ready					:= 1.U

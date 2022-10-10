@@ -22,6 +22,10 @@ import common.OffsetGenerator
 import common.connection.CreditQ
 import common.BaseILA
 import common.Statistics
+import common.connection.ProducerConsumer
+import common.connection.SimpleRouter
+import common.connection.XArbiter
+
 
 class ClientReqInterface(NumChannels:Int,Factor:Int) extends Module{
 	def CLIENT_HOST_MEM_OFFSET = 0
@@ -155,79 +159,94 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends ClientReqInterf
 	Collector.fireLast(io.send_data)
 }
 
+class WorkQueue(val credits:Int, val range:Long, val index:Int) extends Module{
+	def PacketSize = 4096
+	def TODO_32 = 32
+	def CompressedSize = 2048
+	def CLIENT_HOST_MEM_OFFSET = 0
+	val io = IO(new Bundle{
+		val recv_meta		= Flipped(Decoupled(new RECV_META))
+		val axib_data		= Flipped(Decoupled(new AxiBridgeData))
+		val writeCMD		= Decoupled(new WriteCMD)
+		val readCMD			= Decoupled(new ReadCMD)
+	})
+
+	val creditQ				= Module(new CreditQ())//must minus max threads num
+	creditQ.io.maxCredit	:= credits.U
+	val offset	= OffsetGenerator(
+		num 	= 1.U,
+		range 	= range.U,
+		step 	= PacketSize.U,
+		en 		= io.writeCMD.fire()
+	)
+
+
+	val recv_meta					= XQueue(io.recv_meta, TODO_32)
+	Connection.one2many(recv_meta)(io.writeCMD,creditQ.io.in)
+	io.writeCMD.bits.addr_offset	:= offset + CLIENT_HOST_MEM_OFFSET.U + (range*index).U
+	io.writeCMD.bits.len			:= PacketSize.U
+
+
+	Connection.many2one(io.axib_data,creditQ.io.out)(io.readCMD)
+
+	io.readCMD.bits.addr_offset		:= io.axib_data.bits.data(32,0)
+	io.readCMD.bits.len				:= CompressedSize.U
+}
+
 class DummyClientReqHandler extends ClientReqInterface(0,0){
 	def TODO_32 = 32
 	def TODO_1024 = 1024
 	def PacketSize = 4096
 	def CompressedSize = 2048
+	def NumThreads = 32
 	/*
 		recv_meta -> writeCMD -> axib_data -> readCMD -> readData -> send_meta
 	*/
-	val global_client_req_threads 			= WireInit(UInt(32.W),0.U)
-	val global_client_req_threads_mem_range = WireInit(UInt(32.W),0.U)
-	BoringUtils.addSink(global_client_req_threads, "global_client_req_threads")
-	BoringUtils.addSink(global_client_req_threads_mem_range, "global_client_req_threads_mem_range")
 
-	val creditQ		= Module(new CreditQ(maxCredit=(HOST_MEM_PARTITION/PacketSize).toInt))
+	val recv_meta					= RegSlice(io.recv_meta)
+	val axib_data					= XQueue(io.axib_data, TODO_1024)
 
-	val recv_meta = {//WriteData and WriteMeta to dma
+	val workQueues	= {
+		for(i<-0 until NumThreads)yield{
+			val credits	= (HOST_MEM_PARTITION/PacketSize/NumThreads).toInt
+			val range 	= HOST_MEM_PARTITION/NumThreads
+			val tmp = Module(new WorkQueue(credits,range,i))
+			tmp
+		}	
+	}
+	val pc							= ProducerConsumer(Seq(4,8))(recv_meta,workQueues.map(_.io.recv_meta))
+	val arbiterWriteCMD				= XArbiter(Seq(4,8))(workQueues.map(_.io.writeCMD),io.writeCMD)
+	val arbiterReadCMD				= XArbiter(Seq(4,8))(workQueues.map(_.io.readCMD),io.readCMD)
 
-		val offset	= OffsetGenerator(
-			num 	= global_client_req_threads,
-			range 	= global_client_req_threads_mem_range,
-			step 	= PacketSize.U,
-			en 		= io.writeCMD.fire()
-		)
-
-
-		val recv_meta					= XQueue(io.recv_meta, TODO_32)
-		// Connection.one2many(recv_meta)(io.writeCMD,creditQ.io.in)
-		recv_meta.ready					:= io.writeCMD.ready & creditQ.io.in.ready
-		io.writeCMD.valid				:= recv_meta.valid & creditQ.io.in.ready
-		creditQ.io.in.valid				:= recv_meta.valid & io.writeCMD.ready
-		io.writeCMD.bits.addr_offset	:= offset + CLIENT_HOST_MEM_OFFSET.U
-		io.writeCMD.bits.len			:= PacketSize.U
-
-		val recv_data			= XQueue(io.recv_data, TODO_32)
-		Connection.one2one(recv_data)(io.writeData)
-		io.writeData.bits.data	<> recv_data.bits.data
-		io.writeData.bits.last	<> recv_data.bits.last
-
-		recv_meta
+	val routerFirstLevel			= SimpleRouter(new AxiBridgeData, 4)
+	val routerSecondLevel			= Seq.fill(4)(SimpleRouter(new AxiBridgeData,8))
+	routerFirstLevel.io.in			<> axib_data
+	routerFirstLevel.io.idx			<> axib_data.bits.data(479,448)
+	for(i<-0 until 4){
+		routerFirstLevel.io.out(i)	<> routerSecondLevel(i).io.in //workQueues(i).io.axib_data
+		routerSecondLevel(i).io.idx	<> routerSecondLevel(i).io.in.bits.data(479,448+2)
+		for(j<-0 until 8){
+			routerSecondLevel(i).io.out(j)	<> workQueues(i*8+j).io.axib_data
+		}
 	}
 	
-	val axib_data					= XQueue(io.axib_data, TODO_1024)
-	// Connection.many2one(axib_data,creditQ.io.out)(io.readCMD)
-	axib_data.ready					:= creditQ.io.out.valid & io.readCMD.ready
-	creditQ.io.out.ready			:= axib_data.valid & io.readCMD.ready
-	io.readCMD.valid				:= axib_data.valid & creditQ.io.out.valid
 
-	io.readCMD.bits.addr_offset		:= axib_data.bits.data(32,0)
-	io.readCMD.bits.len				:= CompressedSize.U
+	val recv_data			= XQueue(io.recv_data, TODO_32)
+	Connection.one2one(recv_data)(io.writeData)
+	io.writeData.bits.data	<> recv_data.bits.data
+	io.writeData.bits.last	<> recv_data.bits.last
 
-	val creditQ_in_count			= Statistics.count(creditQ.io.in.fire())
-	val creditQ_out_count			= Statistics.count(creditQ.io.out.fire())
-
-	Collector.report(creditQ_in_count)
-	Collector.report(creditQ_out_count)
-
-	val creditQ_out_stall			= Statistics.count(axib_data.valid & io.readCMD.ready & !creditQ.io.out.valid)
-	Collector.report(creditQ_out_stall)
+	class ila_bench(seq:Seq[Data]) extends BaseILA(seq)	  
+  	val inst_bench = Module(new ila_bench(Seq(	
+		io.writeCMD,
+		io.readCMD,
+		io.axib_data,
+  	)))
+  	inst_bench.connect(clock)
+	
 
 	val read_data_stall				= Statistics.count(io.readData.valid & !io.readData.ready)
 	Collector.report(read_data_stall)
-
-	// class ila_credit(seq:Seq[Data]) extends BaseILA(seq)
-	// val inst_credit = Module(new ila_credit(Seq(	
-	// 	creditQ.io.in,
-	// 	creditQ.io.out,
-	// 	io.writeData,
-	// 	io.readCMD,
-	// 	creditQ_in_count,
-	// 	creditQ_out_count,
-	// )))
-	// inst_credit.connect(clock)
-
 
 
 	val readDataDelay				= RegSlice(io.readData)
@@ -266,6 +285,7 @@ class DummyClientReqHandler extends ClientReqInterface(0,0){
 
 	Collector.fire(io.writeCMD)
 	Collector.fire(io.writeData)
+	Collector.fireLast(io.writeData)
 
 	Collector.fire(io.axib_data)
 

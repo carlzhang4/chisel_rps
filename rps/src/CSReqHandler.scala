@@ -77,4 +77,10 @@ class CSReqHandler extends Module{
 	Collector.fire(io.send_data)
 	Collector.fire(io.writeCMD)
 	Collector.fire(io.writeData)
+	Collector.fireLast(io.writeData)
+
+	Collector.report(io.writeCMD.valid)
+	Collector.report(io.writeCMD.ready)
+	Collector.report(io.writeData.valid)
+	Collector.report(io.writeData.ready)
 }
