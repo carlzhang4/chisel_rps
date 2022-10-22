@@ -49,7 +49,7 @@ class ClientReqInterface(NumChannels:Int,Factor:Int) extends Module{
 	})
 }
 
-class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends ClientReqInterface(NumChannels,Factor){
+class ClientReqHandler(NumChannels:Int=4, Factor:Int=12, Index:Int=0) extends ClientReqInterface(NumChannels,Factor){
 	def TODO_32 = 32
 	def PACK_SIZE = 4*1024
 
@@ -104,7 +104,11 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12) extends ClientReqInterf
 	q_2host_meta.io.in.bits.len				:= 64.U
 	q_2host_data.io.in.bits.data			:= reg_offset+CLIENT_HOST_MEM_OFFSET.U+1.U
 	q_2host_data.io.in.bits.last			:= 1.U
-	q_compress_cmd.io.in.bits.addr			:= read_hbm_addr + (GlobalConfig.ChannelOffset*256*1024*1024).U
+	if(Index==0){
+		q_compress_cmd.io.in.bits.addr			:= read_hbm_addr + (GlobalConfig.ChannelOffset*256*1024*1024).U
+	}else{
+		q_compress_cmd.io.in.bits.addr			:= read_hbm_addr + (GlobalConfig.ChannelOffset_1*256*1024*1024).U
+	}
 
 	q_2host_meta.io.out						<> io.writeCMD
 	q_2host_data.io.out						<> io.writeData
@@ -236,13 +240,13 @@ class DummyClientReqHandler extends ClientReqInterface(0,0){
 	io.writeData.bits.data	<> recv_data.bits.data
 	io.writeData.bits.last	<> recv_data.bits.last
 
-	class ila_bench(seq:Seq[Data]) extends BaseILA(seq)	  
-  	val inst_bench = Module(new ila_bench(Seq(	
-		io.writeCMD,
-		io.readCMD,
-		io.axib_data,
-  	)))
-  	inst_bench.connect(clock)
+	// class ila_bench(seq:Seq[Data]) extends BaseILA(seq)	  
+  	// val inst_bench = Module(new ila_bench(Seq(	
+	// 	io.writeCMD,
+	// 	io.readCMD,
+	// 	io.axib_data,
+  	// )))
+  	// inst_bench.connect(clock)
 	
 
 	val read_data_stall				= Statistics.count(io.readData.valid & !io.readData.ready)

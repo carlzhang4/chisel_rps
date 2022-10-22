@@ -135,7 +135,6 @@ class RPSDummyTop extends RawModule {
 	val bench = withClockAndReset(userClk, sw_reset || !userRstn){Module(new BlockServer(4,12,true))}
 
 	bench.io.start_addr			:= Cat(control_reg(110), control_reg(111))
-	bench.io.num_rpcs			:= control_reg(112)
 	bench.io.pfch_tag			:= control_reg(113)
 	bench.io.tag_index			:= control_reg(114)
 	bench.io.c2h_cmd			<> qdma.io.c2h_cmd

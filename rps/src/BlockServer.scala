@@ -25,13 +25,12 @@ import common.Collector
 import common.Timer
 import common.BaseILA
 
-class BlockServer(NumChannels:Int=4, Factor:Int=12, IsDummy:Boolean=false) extends Module{
+class BlockServer(NumChannels:Int=4, Factor:Int=12, IsDummy:Boolean=false, Index:Int=0) extends Module{
 	val io = IO(new Bundle{
 		val axi_hbm					= if(!IsDummy) Some(Vec(NumChannels,AXI_HBM())) else None
 		val axib					= Flipped(new AXIB)
 
 		val start_addr				= Input(UInt(64.W))
-		val num_rpcs				= Input(UInt(32.W))
 		val pfch_tag				= Input(UInt(32.W))
 		val tag_index				= Input(UInt(32.W))
 
@@ -97,7 +96,7 @@ class BlockServer(NumChannels:Int=4, Factor:Int=12, IsDummy:Boolean=false) exten
 	val client_req_handler	= IsDummy match {
 		case true	=> Module(new DummyClientReqHandler)	
 		case false	=> 
-			val t = Module(new ClientReqHandler(NumChannels,Factor))
+			val t = Module(new ClientReqHandler(NumChannels,Factor,Index))
 			t.io.axi_hbm	<> io.axi_hbm.get
 			t
 	}

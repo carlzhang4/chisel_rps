@@ -53,12 +53,12 @@ class ClientAndChunckServer extends Module{
 	io.send_meta					<> arbiter.io.out_meta
 	io.send_data					<> arbiter.io.out_data
 
-	class ila_client(seq:Seq[Data]) extends BaseILA(seq)
-		val inst_client = Module(new ila_client(Seq(	
-			io.send_meta,
-			io.send_data,
-		)))
-	inst_client.connect(clock)
+	// class ila_client(seq:Seq[Data]) extends BaseILA(seq)
+	// 	val inst_client = Module(new ila_client(Seq(	
+	// 		io.send_meta,
+	// 		io.send_data,
+	// 	)))
+	// inst_client.connect(clock)
 
 	/*
 		* recv from net => io.in

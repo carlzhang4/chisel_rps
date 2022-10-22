@@ -36,12 +36,17 @@ resize_pblock [get_pblocks pblock_qdma] -add {SLR0}
 create_pblock pblock_roce
 resize_pblock [get_pblocks pblock_roce] -add {SLR0:SLR1}
 add_cells_to_pblock pblock_roce [get_cells [list roce/roce]]
+add_cells_to_pblock pblock_roce [get_cells [list roce1/roce]]
 # add_cells_to_pblock pblock_roce [get_cells [list clientAndCS]] #when there is ila in it, comment this line
 
 create_pblock pblock_1
 resize_pblock [get_pblocks pblock_1] -add {SLR1}
 add_cells_to_pblock pblock_1 [get_cells [list roce/ip]]
+add_cells_to_pblock pblock_1 [get_cells [list roce1/ip]]
+add_cells_to_pblock pblock_1 [get_cells [list clientAndCS]]
+add_cells_to_pblock pblock_1 [get_cells [list clientAndCS1]]
 
 create_pblock pblock_cmac
 add_cells_to_pblock [get_pblocks pblock_cmac] [get_cells -quiet [list roce/cmac]]
+add_cells_to_pblock [get_pblocks pblock_cmac] [get_cells -quiet [list roce1/cmac]]
 resize_pblock [get_pblocks pblock_cmac] -add {SLR2}
