@@ -26,6 +26,7 @@ object elaborate extends App {
 		case "RPSTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSTop()),dir))
 		case "RPSClientTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSClientTop()),dir))
 		case "RPSDummyTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSDummyTop()),dir))
+		case "RPSCompressTop" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSCompressTop),dir))
 		case "BlockServer" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new BlockServer(4,12,true)),dir))
 		case "CompressorHBM" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new CompressorHBM()),dir))
 		case "HBMCompress" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new HBMCompress(4,12)),dir))
@@ -35,6 +36,7 @@ object elaborate extends App {
 		case "OffsetGenerator" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new OffsetGenerator(8,32)),dir))
 		case "CreditQ" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new CreditQ()),dir))
 		case "ProducerConsumer" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new TestPC),dir))
+		case "Accelerator" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new Accelerator),dir))
 		case _ => println("Module match failed!")
 	}
 }
