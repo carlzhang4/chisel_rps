@@ -27,7 +27,7 @@ import common.BaseILA
 
 
 
-class ClientAndChunckServer extends Module{
+class ClientAndChunckServer(Index:Int) extends Module{
 	def TODO_32 		= 32
 	def TODO_256		= 256
 	def MSG_BEATS		= 64 // 4K/64=64
@@ -78,7 +78,7 @@ class ClientAndChunckServer extends Module{
 
 	val sIdle :: sWork :: sEnd :: Nil = Enum(3)
 	
-	val client			= Module(new Client)
+	val client			= Module(new Client(Index))
 	val cs				= Module(new ChunckServer)
 
 	client.io.start			:= io.start

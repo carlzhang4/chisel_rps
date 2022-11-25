@@ -62,7 +62,7 @@ class ChannelWriter(index:Int) extends Module{
 		recv_meta.ready				:= state === sParseCmd
 
 		reg_aw.valid					:= state === sSendAw
-		reg_aw.bits.addr				:= (256*1024*1024*index).U + reg_addr
+		reg_aw.bits.addr				:= (1L*256*1024*1024*index).U + reg_addr
 		reg_aw.bits.len				:= 0xf.U //hbm aw max 16 beats
 
 		when(reg_aw.fire()){

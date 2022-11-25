@@ -90,7 +90,7 @@ class RPSClientTop extends RawModule{
 	roce.io.sw_reset						:= sw_reset
 	ToZero(roce.io.s_mem_read_data.bits)
 	ToZero(roce.io.qp_init.bits)
-	val roce1								= Module(new NetworkStack(IS_PART_1=true))
+	val roce1								= Module(new NetworkStack(PART_ID=1))
 	roce1.io.pin							<> cmac_pin1
 	roce1.io.user_clk						:= netClk
 	roce1.io.user_arstn						:= netRstn
@@ -193,7 +193,7 @@ class RPSClientTop extends RawModule{
 		roce1.io.arp_req.bits				:= 0x62bda8c0.U
 	}
 
-	val clientAndCS:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer())}
+	val clientAndCS:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer(0))}
 	clientAndCS.io.recv_meta			<> XConverter(roce.io.m_recv_meta,netClk,netRstn & !sw_reset,userClk)
 	clientAndCS.io.recv_data			<> XConverter(roce.io.m_recv_data,netClk,netRstn & !sw_reset,userClk)
 	roce.io.s_tx_meta					<> XConverter(clientAndCS.io.send_meta,userClk,userRstn & !sw_reset,netClk)
@@ -206,7 +206,7 @@ class RPSClientTop extends RawModule{
 		clientAndCS.io.start			:= start
 	}
 
-	val clientAndCS1:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer())}
+	val clientAndCS1:ClientAndChunckServer	= withClockAndReset(userClk, sw_reset || !userRstn){Module(new ClientAndChunckServer(1))}
 	clientAndCS1.io.recv_meta			<> XConverter(roce1.io.m_recv_meta,netClk,netRstn & !sw_reset,userClk)
 	clientAndCS1.io.recv_data			<> XConverter(roce1.io.m_recv_data,netClk,netRstn & !sw_reset,userClk)
 	roce1.io.s_tx_meta					<> XConverter(clientAndCS1.io.send_meta,userClk,userRstn & !sw_reset,netClk)
@@ -219,6 +219,8 @@ class RPSClientTop extends RawModule{
 		clientAndCS1.io.start			:= start
 	}
 	BoringUtils.addSource(control_reg(113),"global_client_maxCredit")
+	BoringUtils.addSource(control_reg(114),"global_bucket_id")
+	BoringUtils.addSource(control_reg(115),"global_bucket_enable")
 	Collector.show_more()
 	Collector.connect_to_status_reg(status_reg,100)
 }

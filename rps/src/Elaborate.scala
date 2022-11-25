@@ -37,6 +37,7 @@ object elaborate extends App {
 		case "CreditQ" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new CreditQ()),dir))
 		case "ProducerConsumer" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new TestPC),dir))
 		case "Accelerator" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new Accelerator),dir))
+		case "RPSTest" => stage.execute(arr,Seq(ChiselGeneratorAnnotation(() => new RPSTest),dir))
 		case _ => println("Module match failed!")
 	}
 }

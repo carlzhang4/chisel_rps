@@ -96,7 +96,8 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12, Index:Int=0) extends Cl
 		num 	= NumChannels.U,
 		range 	= (256*1024*1024).U,
 		step 	= PACK_SIZE.U,
-		en 		= q_compress_cmd.io.in.fire()
+		en 		= q_compress_cmd.io.in.fire(),
+		addr_width = 33
 	)
 	
 	Connection.one2many(q_meta_dup.io.out)(q_2host_meta.io.in, q_2host_data.io.in, q_compress_cmd.io.in)
@@ -104,11 +105,8 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12, Index:Int=0) extends Cl
 	q_2host_meta.io.in.bits.len				:= 64.U
 	q_2host_data.io.in.bits.data			:= reg_offset+CLIENT_HOST_MEM_OFFSET.U+1.U
 	q_2host_data.io.in.bits.last			:= 1.U
-	if(Index==0){
-		q_compress_cmd.io.in.bits.addr			:= read_hbm_addr + (GlobalConfig.ChannelOffset*256*1024*1024).U
-	}else{
-		q_compress_cmd.io.in.bits.addr			:= read_hbm_addr + (GlobalConfig.ChannelOffset_1*256*1024*1024).U
-	}
+
+	q_compress_cmd.io.in.bits.addr			:= read_hbm_addr + (1L*GlobalConfig.ChannelOffset(Index)*256*1024*1024).U
 
 	q_2host_meta.io.out						<> io.writeCMD
 	q_2host_data.io.out						<> io.writeData
@@ -141,7 +139,7 @@ class ClientReqHandler(NumChannels:Int=4, Factor:Int=12, Index:Int=0) extends Cl
 		}
 		val writers	= {
 			for(i<-0 until NumChannels)yield{
-				val t = Module(new ChannelWriter(i+GlobalConfig.ChannelOffset))
+				val t = Module(new ChannelWriter(i+GlobalConfig.ChannelOffset(Index)))
 				t.io.aw	<> io.axi_hbm(i).aw
 				t.io.w	<> io.axi_hbm(i).w
 				t.io.recv_meta	<> router.io.out_meta(i)

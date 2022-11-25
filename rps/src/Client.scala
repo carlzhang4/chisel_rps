@@ -14,8 +14,9 @@ import common.Timer
 import common.connection.Connection
 import common.connection.CreditQ
 import chisel3.util.experimental.BoringUtils
+import common.LatencyBucket
 
-class Client()extends Module{
+class Client(Index:Int=0)extends Module{
 	//client send 4KB data out, and recv 64B rps resp, count the latency
 	def TODO_32 		= 32
 	def TODO_1024 		= 1024
@@ -162,4 +163,27 @@ class Client()extends Module{
 	Collector.report(e2e_latency,fix_str = "REG_E2E_LATENCY")
 
 	Collector.report(total_cycles,fix_str = "REG_TOTAL_CYCLES")
+
+	if(Index==0){
+
+		
+
+		val latency_bucket = Module{new LatencyBucket(BUCKET_SIZE=1024,LATENCY_STRIDE=16)}
+
+		val bucketRdId		= Wire(UInt(32.W))
+		val enable			= Wire(UInt(32.W))
+		bucketRdId			:= 0.U
+		enable				:= 0.U
+		BoringUtils.addSink(bucketRdId,"global_bucket_id")
+		BoringUtils.addSink(enable,"global_bucket_enable")
+
+		latency_bucket.io.enable		:= enable
+		latency_bucket.io.start			:= io.send_meta.fire()
+		latency_bucket.io.end			:= io.recv_meta.fire()
+		latency_bucket.io.bucketRdId	:= bucketRdId
+		latency_bucket.io.resetBucket	:= reset
+
+		Collector.report(latency_bucket.io.bucketValue, "REG_BUCKET_VALUE")
+
+	}
 }
